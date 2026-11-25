@@ -1,0 +1,216 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="记录本站基于 Astro 5 的完整搭建流程：项目初始化、内容模型、布局与组件、搜索/评论/暗色模式等功能，以及双仓库 GitHub Pages 自动部署方案。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="从零搭建我的 Astro 博客：从初始化到双仓库部署全流程"><meta property="og:description" content="记录本站基于 Astro 5 的完整搭建流程：项目初始化、内容模型、布局与组件、搜索/评论/暗色模式等功能，以及双仓库 GitHub Pages 自动部署方案。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/astro-blog-setup/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>从零搭建我的 Astro 博客：从初始化到双仓库部署全流程</title><link rel="stylesheet" href="/_astro/about.B9tIfBFX.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/8d36494b/">建站笔记</a>  <span class="sep">/</span> <span class="current">从零搭建我的 Astro 博客：从初始化到双仓库部署全流程</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>从零搭建我的 Astro 博客：从初始化到双仓库部署全流程</h1> <div class="meta"> <time datetime="2022-06-08T00:00:00.000Z">2022年6月8日</time>  <span>· 约 4 分钟</span> <span>· 1503 字</span> <span class="meta-tags"> <a class="tag" href="/tags/astro/">#Astro</a><a class="tag" href="/tags/5015cfdc/">#博客搭建</a><a class="tag" href="/tags/9abfe4a0/">#前端</a><a class="tag" href="/tags/844d57b2/">#自动化部署</a> </span> </div> </header>   <p>这篇文章记录我这个博客是怎么一步步搭起来的：从初始化 Astro 项目，到内容模型、布局组件、常用功能接入，最后通过 GitHub Actions 自动部署到 GitHub Pages。整体偏向实战复盘，方便自己以后重建环境，也供有类似需求的朋友参考。</p>
+<h2 id="一选型与整体架构">一、选型与整体架构</h2>
+<p>最终技术栈：</p>
+<ul>
+<li><strong>框架</strong>：Astro 5（内容优先的静态站点框架，默认输出纯静态 HTML，体积小、首屏快）</li>
+<li><strong>内容</strong>：Markdown 文章，集中存放在 <code>src/content/blog/</code>，由内容集合（Content Collection）统一校验</li>
+<li><strong>检索</strong>：Pagefind 构建离线全文索引，生成静态搜索</li>
+<li><strong>评论</strong>：Giscus，基于 GitHub Discussions</li>
+<li><strong>订阅</strong>：<code>@astrojs/rss</code> 生成 RSS，<code>@astrojs/sitemap</code> 生成站点地图</li>
+<li><strong>部署</strong>：双仓库模式，源码私有仓 + 产物公开仓，推代码后 Actions 自动构建发布</li>
+</ul>
+<p>这里先说清楚<strong>双仓库</strong>的设计，它直接决定后面的目录和配置：</p>
+<table>
+<thead>
+<tr>
+<th>仓库</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>blog-astro</code>（私有）</td>
+<td>存放源码、文章、组件、样式与工作流</td>
+</tr>
+<tr>
+<td><code>zhanzhenguan.github.io</code>（公开）</td>
+<td>只放 <code>dist/</code> 构建产物，作为 GitHub Pages 主页</td>
+</tr>
+</tbody>
+</table>
+<p>产物仓是 <code>&#x3C;用户名>.github.io</code> 主页仓库，站点挂在根路径，所以 Astro 配置里只写 <code>site</code>，不写 <code>base</code>。</p>
+<h2 id="二初始化项目">二、初始化项目</h2>
+<p>前置环境：Node.js 22、npm、Git。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 初始化 Astro 项目</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> create</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> astro@latest</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 进入目录安装依赖</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> install</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 本地开发，默认带热更新</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> run</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> dev</span></span></code></pre>
+<p>常用脚本（对应 <code>package.json</code>）：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> run</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> dev</span><span style="color:#6A737D;--shiki-dark:#6A737D">       # 本地开发</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> run</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> build</span><span style="color:#6A737D;--shiki-dark:#6A737D">     # 构建产物 + 生成 Pagefind 索引</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> run</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> preview</span><span style="color:#6A737D;--shiki-dark:#6A737D">   # 本地预览构建产物</span></span></code></pre>
+<p>其中 <code>build</code> 实际执行的是：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">astro</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> build</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> &#x26;&#x26; </span><span style="color:#6F42C1;--shiki-dark:#B392F0">pagefind</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> --site</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> dist</span></span></code></pre>
+<p>先把站点构建到 <code>dist/</code>，再由 Pagefind 扫描产物生成离线搜索索引。</p>
+<h2 id="三目录结构与内容模型">三、目录结构与内容模型</h2>
+<p>源码主要目录：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>src/</span></span>
+<span class="line"><span>├── components/     # 可复用组件（卡片、分页、社交链接、主题切换等）</span></span>
+<span class="line"><span>├── layouts/        # 页面布局（BaseLayout.astro）</span></span>
+<span class="line"><span>├── pages/          # 路由页面（首页、归档、标签、分类、文章详情等）</span></span>
+<span class="line"><span>├── styles/         # 全局样式与主题变量</span></span>
+<span class="line"><span>├── utils/          # 文章、标签等工具函数</span></span>
+<span class="line"><span>└── content/blog/   # 所有 Markdown 文章</span></span></code></pre>
+<p>文章的字段在 <code>src/content.config.ts</code> 里用 Zod 定义并校验：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="ts"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">const</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> blog</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> defineCollection</span><span style="color:#24292E;--shiki-dark:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  loader: </span><span style="color:#6F42C1;--shiki-dark:#B392F0">glob</span><span style="color:#24292E;--shiki-dark:#E1E4E8">({ pattern: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">'**/*.md'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, base: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">'./src/content/blog'</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> }),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  schema: z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    title: z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    description: z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    pubDate: z.coerce.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">date</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    updatedDate: z.coerce.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">date</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">optional</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    tags: z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">array</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">default</span><span style="color:#24292E;--shiki-dark:#E1E4E8">([]),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    draft: z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">default</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    cover: z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">optional</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    pinned: z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">default</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    series: z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">optional</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    category: z.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">string</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">optional</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  }),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">});</span></span></code></pre>
+<p>写新文章时，只要在 <code>src/content/blog/</code> 下新建 <code>.md</code> 文件，填好 frontmatter：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">---</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">title</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"文章标题"</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">description</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"一句话摘要，显示在列表页和浏览器描述里"</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">pubDate</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">2026-11-25</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">tags</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">标签一</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">标签二</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">draft</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">category</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">分类名</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">---</span></span></code></pre>
+<p><code>draft: true</code> 可先存草稿不对外展示；<code>pinned</code> 控制首页置顶；<code>series</code> 用于把同系列文章串起来。</p>
+<h2 id="四布局与组件">四、布局与组件</h2>
+<h3 id="1-基础布局">1. 基础布局</h3>
+<p><code>BaseLayout.astro</code> 是所有页面的外壳，负责：</p>
+<ul>
+<li>引入全局样式、字体与背景图</li>
+<li>顶部导航（首页、分类、归档、标签、关于）</li>
+<li>暗色模式初始化脚本（避免刷新闪烁）</li>
+<li>抽屉式移动导航</li>
+<li>页面底部版权与社交链接</li>
+</ul>
+<p>正文内容通过 <code>&#x3C;slot /></code> 注入到布局中。</p>
+<h3 id="2-复用组件">2. 复用组件</h3>
+<p>抽出的可复用组件放在 <code>src/components/</code>：</p>
+<ul>
+<li><code>PostCard.astro</code>：首页与列表页的文章卡片（封面、标题、摘要、标签）</li>
+<li><code>Pagination.astro</code>：分页控件</li>
+<li><code>ThemeToggle.astro</code>：亮/暗主题切换按钮</li>
+<li><code>SocialLinks.astro</code>：GitHub、RSS 等社交入口</li>
+</ul>
+<h2 id="五核心功能接入">五、核心功能接入</h2>
+<h3 id="1-rss-与站点地图">1. RSS 与站点地图</h3>
+<p>RSS 用 <code>@astrojs/rss</code> 生成，sitemap 用 <code>@astrojs/sitemap</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="js"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">// astro.config.mjs</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">import</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> sitemap </span><span style="color:#D73A49;--shiki-dark:#F97583">from</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '@astrojs/sitemap'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">export</span><span style="color:#D73A49;--shiki-dark:#F97583"> default</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> defineConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  site: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">'https://zhanzhenguan.github.io'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  integrations: [</span><span style="color:#6F42C1;--shiki-dark:#B392F0">sitemap</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()],</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">});</span></span></code></pre>
+<h3 id="2-pagefind-静态搜索">2. Pagefind 静态搜索</h3>
+<p>Pagefind 在构建后扫描 <code>dist/</code>，生成纯静态的倒排索引，前端打开时按需查询，不需要独立搜索服务。页面里通过 <code>&#x3C;pagefind-modal-trigger></code> 触发搜索弹窗。构建脚本里的 <code>pagefind --site dist</code> 就是在做这件事。</p>
+<h3 id="3-giscus-评论">3. Giscus 评论</h3>
+<p>评论接入 Giscus，数据存在对应仓库的 GitHub Discussions 里。在后台开启 Discussions 后，把仓库名、分类等配置填进评论组件即可，文章详情页底部自动渲染评论区。</p>
+<h3 id="4-暗色模式">4. 暗色模式</h3>
+<p>主题用 CSS 变量驱动：<code>:root</code> 定义浅色变量，<code>[data-theme='dark']</code> 覆盖暗色变量。切换时只改 <code>document.documentElement.dataset.theme</code>，并把选择存到 <code>localStorage</code>；<code>&#x3C;head></code> 内联一小段脚本在首帧前读取主题，避免刷新时白屏闪烁。</p>
+<h3 id="5-文章页辅助信息">5. 文章页辅助信息</h3>
+<p>文章详情页陆续补上了：</p>
+<ul>
+<li>目录（TOC）与阅读进度条</li>
+<li>阅读时长、发布日期、更新日期</li>
+<li>上一篇 / 下一篇导航</li>
+<li>面包屑、版权声明、相关文章推荐</li>
+<li>代码块 Shiki 双主题高亮与复制按钮</li>
+</ul>
+<h3 id="6-图片与提示块">6. 图片与提示块</h3>
+<ul>
+<li>文章图片支持点击放大的灯箱效果</li>
+<li>Markdown 中的提示块（Callout）用于强调注意事项与踩坑记录</li>
+</ul>
+<h2 id="六样式与主题">六、样式与主题</h2>
+<p>全局样式集中在 <code>src/styles/global.css</code>，按主题分组管理：</p>
+<ul>
+<li>颜色：文字、边框、卡片底色、强调色（accent）及其浅底色</li>
+<li>尺寸：容器最大宽度、阅读行宽、圆角、间距</li>
+<li>背景：浅色 / 暗色各一张背景图，配合半透明遮罩保证文字可读性</li>
+</ul>
+<p>样式变量和组件解耦，换配色时主要改变量，不必动组件结构。</p>
+<h2 id="七本地开发与构建">七、本地开发与构建</h2>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 安装依赖</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> ci</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 本地开发</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> run</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> dev</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 检查构建是否通过</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> run</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> build</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 本地预览构建产物</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> run</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> preview</span></span></code></pre>
+<p>每次改动后先本地 <code>build</code> 确认没有报错，再考虑推送；预览地址默认是本地端口，方便对比深浅色、移动端导航等效果。</p>
+<h2 id="八双仓库自动部署">八、双仓库自动部署</h2>
+<p>部署工作流在 <code>.github/workflows/deploy.yml</code>，触发条件是推送到私有源码仓的 <code>master</code> 分支，也支持在 Actions 页面手动触发。</p>
+<p>流程如下：</p>
+<ol>
+<li>检出私有仓源码</li>
+<li>安装 Node 22 与依赖（<code>npm ci</code>）</li>
+<li>执行 <code>npm run build</code> 生成 <code>dist/</code></li>
+<li>用 <code>DEPLOY_TOKEN</code> 克隆公开产物仓</li>
+<li>清空旧产物（保留 <code>.git</code> 历史）</li>
+<li>拷贝最新 <code>dist/*</code> 到产物仓</li>
+<li>提交并推送到产物仓默认分支</li>
+</ol>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">on</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  push</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    branches</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">master</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  workflow_dispatch</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span></code></pre>
+<p><code>DEPLOY_TOKEN</code> 是一个有权限推送公开仓的 Personal Access Token，作为仓库 Secrets 配置；工作流本身只读取私有源码，不把 token 暴露到前端。</p>
+<blockquote>
+<p>注意：产物仓是主页仓库，站点根路径访问，Astro 配置里不要额外写 <code>base</code>；如果挂在子路径下才需要配置 <code>base</code>。</p>
+</blockquote>
+<h2 id="九日常写文章的节奏">九、日常写文章的节奏</h2>
+<ol>
+<li>在 <code>src/content/blog/</code> 新建 Markdown 文件，填好 frontmatter</li>
+<li>正文用标准 Markdown：标题、列表、代码块、引用、图片</li>
+<li>本地 <code>npm run dev</code> 预览排版与效果</li>
+<li><code>npm run build</code> 确认构建无报错</li>
+<li>提交并推送到私有仓 <code>master</code>，Actions 自动构建发布到 Pages</li>
+</ol>
+<h2 id="十markdown-写作速查">十、Markdown 写作速查</h2>
+<p>正文支持常用 Markdown 语法，写文章时直接套用即可：</p>
+<ul>
+<li>行内代码：<code>npm run dev</code></li>
+<li>代码块：</li>
+</ul>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> install</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">npm</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> run</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> dev</span></span></code></pre>
+<ul>
+<li>加粗、<em>斜体</em>、<a href="https://astro.build">链接</a></li>
+<li>无序列表：
+<ul>
+<li>条目一</li>
+<li>条目二</li>
+</ul>
+</li>
+<li>引用块也可以正常渲染</li>
+</ul>
+<blockquote>
+<p>引用块用于补充说明或强调注意事项。</p>
+</blockquote>
+<h2 id="十一小结">十一、小结</h2>
+<p>这套方案的核心思路是：<strong>Astro 负责内容渲染与静态产物，Pagefind 负责离线检索，Giscus 承担评论，GitHub Actions 把源码和产物两个仓库解耦</strong>。日常写作只需要关心 Markdown 内容，样式、检索、部署都由工程模板兜底。</p>
+<p>如果以后要扩展，可以再考虑访问统计、友链、i18n、PWA 等方向；当前版本优先保证写作体验、页面性能和部署稳定。</p> <div class="post-copyright"> <p><strong>本文标题：</strong>从零搭建我的 Astro 博客：从初始化到双仓库部署全流程</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/astro-blog-setup/">https://zhanzhenguan.github.io/blog/astro-blog-setup/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <nav class="post-nav"> <a href="/blog/mqtt-3-dashboard/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">EMQX Dashboard：认证授权与数据集成</div> </a> <span></span> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"从零搭建我的 Astro 博客：从初始化到双仓库部署全流程","description":"记录本站基于 Astro 5 的完整搭建流程：项目初始化、内容模型、布局与组件、搜索/评论/暗色模式等功能，以及双仓库 GitHub Pages 自动部署方案。","datePublished":"2022-06-08T00:00:00.000Z","dateModified":"2022-06-08T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/astro-blog-setup/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>
