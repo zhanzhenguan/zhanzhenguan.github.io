@@ -1,0 +1,90 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="记录 Astro 部署到 GitHub Pages 后 CSS 404 的排查过程：仓库里文件明明存在却访问 404，根因是 Jekyll 忽略下划线开头目录，用 .nojekyll 关闭 Jekyll 后恢复。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="GitHub Pages 上 _astro 样式 404：被 Jekyll 吃掉的打包资源"><meta property="og:description" content="记录 Astro 部署到 GitHub Pages 后 CSS 404 的排查过程：仓库里文件明明存在却访问 404，根因是 Jekyll 忽略下划线开头目录，用 .nojekyll 关闭 Jekyll 后恢复。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/github-pages-nojekyll-404/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>GitHub Pages 上 _astro 样式 404：被 Jekyll 吃掉的打包资源</title><link rel="stylesheet" href="/_astro/about.B9tIfBFX.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/8d36494b/">建站笔记</a>  <span class="sep">/</span> <span class="current">GitHub Pages 上 _astro 样式 404：被 Jekyll 吃掉的打包资源</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>GitHub Pages 上 _astro 样式 404：被 Jekyll 吃掉的打包资源</h1> <div class="meta"> <time datetime="2022-06-08T00:00:00.000Z">2022年6月8日</time>  <span>· 约 3 分钟</span> <span>· 889 字</span> <span class="meta-tags"> <a class="tag" href="/tags/github-pages/">#GitHub Pages</a><a class="tag" href="/tags/astro/">#Astro</a><a class="tag" href="/tags/a9f94dcd/">#部署</a><a class="tag" href="/tags/jekyll/">#Jekyll</a><a class="tag" href="/tags/6e621f2f/">#问题排查</a> </span> </div> </header>   <p>把 Astro 站点部署到 GitHub Pages 后，遇到一个很迷惑的问题：页面 HTML 能打开，但样式全丢，浏览器控制台里打包好的 CSS 一直报 <strong>404</strong>。仓库里点开看，文件明明就在。这篇记录一下排查过程和根因。</p>
+<h2 id="一现象">一、现象</h2>
+<p>线上站点 HTML 正常返回，其他静态资源也都能访问，唯独打包到 <code>_astro/</code> 目录下的样式表访问不到：</p>
+<table>
+<thead>
+<tr>
+<th>资源</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>首页 / 文章页 HTML</td>
+<td>200 正常</td>
+</tr>
+<tr>
+<td><code>/pagefind/pagefind-component-ui.css</code>、<code>.js</code></td>
+<td>200</td>
+</tr>
+<tr>
+<td><code>/favicon.svg</code>、<code>/rss.xml</code>、<code>sitemap</code></td>
+<td>200</td>
+</tr>
+<tr>
+<td><code>/_astro/about.B9tIfBFX.css</code>（打包样式表）</td>
+<td><strong>404 缺失</strong></td>
+</tr>
+</tbody>
+</table>
+<p>页面能打开，但拿不到 CSS，最终呈现出来就是一堆没有样式的裸文本。</p>
+<h2 id="二排查过程">二、排查过程</h2>
+<p>先排除常见方向：</p>
+<ol>
+<li><strong>不是路径或 base 配置问题</strong>：HTML 里 CSS 链接是 <code>/_astro/about.B9tIfBFX.css</code>，站点挂在 Pages 根路径，<code>astro.config.mjs</code> 只配了 <code>site</code>、没有配 <code>base</code>，路径写法本身正确。</li>
+<li><strong>不是本地构建问题</strong>：本地 <code>npm run build</code> 通过，<code>dist/_astro/</code> 里这个 CSS 存在（18KB），文件名和线上 HTML 引用完全一致，本地 preview 样式正常。</li>
+<li><strong>不是文件被 Git 忽略</strong>：产物仓根目录没有 <code>.gitignore</code>，也没有规则排除 CSS 或 <code>_astro</code>。</li>
+<li><strong>不是分支不一致</strong>：产物仓默认分支是 <code>master</code>，部署脚本也推到 <code>master</code>，<code>master</code> 分支上 <code>index.html</code> 和 CSS 都在；<code>main</code> 分支基本为空。</li>
+</ol>
+<p>排查到这里就很反常：HTML、pagefind、favicon、RSS、sitemap 全部 200，<strong>唯独 <code>_astro/</code> 目录下的资源 404</strong>。</p>
+<h2 id="三根因jekyll-忽略下划线开头的目录">三、根因：Jekyll 忽略下划线开头的目录</h2>
+<p>GitHub Pages 默认会经过一套叫 <strong>Jekyll</strong> 的静态站点处理程序。Jekyll 有一条历史规则：<strong>名字以下划线 <code>_</code> 开头的目录会被直接忽略，不对外提供访问</strong>。</p>
+<ul>
+<li><code>/favicon.svg</code>、<code>/rss.xml</code>、<code>/pagefind/</code>：目录名没有下划线 → 正常发布；</li>
+<li><code>/_astro/</code>：目录名以下划线 <code>_</code> 开头 → 被 Jekyll 屏蔽，浏览器访问就 404。</li>
+</ul>
+<p>这就解释了那个迷惑现象：</p>
+<blockquote>
+<p>GitHub 仓库里文件完整存在 ✅，线上访问 CSS 却 404 ❌</p>
+</blockquote>
+<p>Astro 打包后，所有编译产物默认放在 <code>_astro/</code> 目录（CSS、JS 都在里面），正好踩中这条规则。</p>
+<h2 id="四解决放置-nojekyll-标记文件">四、解决：放置 <code>.nojekyll</code> 标记文件</h2>
+<p><code>.nojekyll</code> 是一个<strong>空文件</strong>。只要站点根目录存在这个文件，就是告诉 GitHub Pages：</p>
+<blockquote>
+<p>不要运行 Jekyll，不要过滤任何目录，我已经打包好全部静态文件，直接原样对外提供访问。</p>
+</blockquote>
+<p>在 Astro 项目里，把空文件放到 <code>public/.nojekyll</code>：</p>
+<ul>
+<li>构建时 <code>public/</code> 下的文件会原样复制到 <code>dist/</code> 产物根目录；</li>
+<li>部署到 Pages 后，站点根目录就带上了这个文件，Jekyll 过滤被关闭，<code>_astro/</code> 资源正常放行。</li>
+</ul>
+<h2 id="五故障复盘">五、故障复盘</h2>
+<p>完整链路是这样的：</p>
+<ol>
+<li>项目缺少 <code>public/.nojekyll</code>；</li>
+<li>代码推到产物仓，所有文件上传成功，仓库里看一切正常；</li>
+<li>GitHub Pages 开启 Jekyll 构建，把 <code>_astro/</code> 整个目录屏蔽；</li>
+<li>浏览器打开站点，HTML 返回成功，但样式表在被屏蔽的 <code>_astro/</code> 里 → CSS 404，页面失去样式；</li>
+<li>加上空文件 <code>.nojekyll</code>，提交推送，流水线重新部署；</li>
+<li>Pages 检测到该文件，关闭 Jekyll 过滤，<code>_astro/</code> 资源恢复访问，样式正常。</li>
+</ol>
+<h2 id="六预防建议">六、预防建议</h2>
+<ul>
+<li>Astro（或任何纯静态站点）部署到 GitHub Pages 时，<strong>记得在 <code>public/</code> 放一个空的 <code>.nojekyll</code></strong>；</li>
+<li>如果线上出现”仓库有文件、页面资源 404”，先区分是路径/base 配错、分支不一致，还是被平台规则过滤；</li>
+<li>部署脚本可以在构建后校验关键资源（CSS、JS）是否齐全，避免静默丢资源。</li>
+</ul>
+<blockquote>
+<p>这个坑和代码写错、路径写错无关，纯粹是 GitHub Pages 的 Jekyll 默认规则导致的，新手用 Astro 部署时很容易踩到。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>GitHub Pages 上 _astro 样式 404：被 Jekyll 吃掉的打包资源</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/github-pages-nojekyll-404/">https://zhanzhenguan.github.io/blog/github-pages-nojekyll-404/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2022-06-08T00:00:00.000Z">2022-06-08</time> </div> <a class="title" href="/blog/astro-blog-setup/">从零搭建我的 Astro 博客：从初始化到双仓库部署全流程</a> <p>记录本站基于 Astro 5 的完整搭建流程：项目初始化、内容模型、布局与组件、搜索/评论/暗色模式等功能，以及双仓库 GitHub Pages 自动部署方案。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/mqtt-3-dashboard/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">EMQX Dashboard：认证授权与数据集成</div> </a> <a class="next" href="/blog/astro-blog-setup/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">从零搭建我的 Astro 博客：从初始化到双仓库部署全流程</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"GitHub Pages 上 _astro 样式 404：被 Jekyll 吃掉的打包资源","description":"记录 Astro 部署到 GitHub Pages 后 CSS 404 的排查过程：仓库里文件明明存在却访问 404，根因是 Jekyll 忽略下划线开头目录，用 .nojekyll 关闭 Jekyll 后恢复。","datePublished":"2022-06-08T00:00:00.000Z","dateModified":"2022-06-08T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/github-pages-nojekyll-404/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>
