@@ -1,0 +1,489 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="基于 Java + Spring Boot 梳理微信支付实战：产品形态与接入资料、支付安全基础、项目骨架、APIv3 下单与回调验签解密、订单超时关单、退款与退款核实、账单下载，以及 V2/V3 版本差异对照。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="微信支付实战：接入准备、Native 下单、回调通知与退款全流程"><meta property="og:description" content="基于 Java + Spring Boot 梳理微信支付实战：产品形态与接入资料、支付安全基础、项目骨架、APIv3 下单与回调验签解密、订单超时关单、退款与退款核实、账单下载，以及 V2/V3 版本差异对照。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/wechat-pay/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>微信支付实战：接入准备、Native 下单、回调通知与退款全流程</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/26b59f52/">支付</a>  <span class="sep">/</span> <span class="current">微信支付实战：接入准备、Native 下单、回调通知与退款全流程</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>微信支付实战：接入准备、Native 下单、回调通知与退款全流程</h1> <div class="meta"> <time datetime="2026-11-25T00:00:00.000Z">2026年11月25日</time>  <span>· 约 13 分钟</span> <span>· 4464 字</span> <span class="meta-tags"> <a class="tag" href="/tags/bffe28c8/">#微信支付</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/e778d61a/">#后端</a><a class="tag" href="/tags/db30abea/">#支付实战</a><a class="tag" href="/tags/apiv3/">#APIv3</a> </span> </div> </header>   <p>这篇文章把微信支付实战课程的课堂笔记整理成一份可复盘的技术文档，覆盖从接入准备、安全基础、项目骨架，到 Native 下单、支付通知、退款、账单的完整链路。整体按“先概念、再骨架、最后接口流程”的顺序组织，方便以后重建环境或排查支付问题时查阅。</p>
+<h2 id="一微信支付产品形态与接入准备">一、微信支付产品形态与接入准备</h2>
+<h3 id="11-常见支付产品">1.1 常见支付产品</h3>
+<table>
+<thead>
+<tr>
+<th>产品形态</th>
+<th>适用场景</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>付款码支付</td>
+<td>线下面对面收银</td>
+<td>用户出示微信钱包付款码，商家扫码后完成支付</td>
+</tr>
+<tr>
+<td>JSAPI 支付</td>
+<td>公众号、线下、PC 网站</td>
+<td>用户在微信内或扫码后输入金额完成支付</td>
+</tr>
+<tr>
+<td>小程序支付</td>
+<td>微信小程序内交易</td>
+<td>在小程序平台内完成支付</td>
+</tr>
+<tr>
+<td>Native 支付</td>
+<td>PC 网站</td>
+<td>商家展示支付二维码，用户用微信“扫一扫”付款，商家预先指定金额</td>
+</tr>
+<tr>
+<td>APP 支付</td>
+<td>移动端独立 APP</td>
+<td>在 APP 应用内集成微信支付模块</td>
+</tr>
+<tr>
+<td>刷脸支付</td>
+<td>刷脸设备前</td>
+<td>通过摄像头刷脸、识别身份后完成支付</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-接入前需要准备的资料">1.2 接入前需要准备的资料</h3>
+<p>接入微信支付前，需要先在对应平台申请并妥善保存以下材料：</p>
+<ul>
+<li><strong>商户号</strong>：在微信商户平台提交资料、签署协议后获取；</li>
+<li><strong>AppID</strong>：在微信公众平台注册服务号、完成认证后获取，再绑定商户号；</li>
+<li><strong>APIv2 密钥</strong>：APIv2 版本接口使用，在商户平台「账户中心 → 安全中心 → API 安全」设置；</li>
+<li><strong>APIv3 密钥</strong>：APIv3 版本接口使用，同样在 API 安全中设置；</li>
+<li><strong>商户 API 证书</strong>：APIv3 接口普遍需要，APIv2 的退款、企业红包、企业付款等高级接口也需要；</li>
+<li><strong>微信支付平台证书</strong>：可预先下载，也可通过编程方式获取，用于验签。</li>
+</ul>
+<blockquote>
+<p>注意：所有 API 密钥和证书都属于敏感信息，必须妥善保管，防止泄露；公开博客、代码仓库中不要写入真实密钥、私钥或证书。</p>
+</blockquote>
+<h2 id="二支付安全基础">二、支付安全基础</h2>
+<p>理解微信支付的签名、验签与解密之前，先补齐几个密码学基础概念。</p>
+<h3 id="21-机密性相关概念">2.1 机密性相关概念</h3>
+<ul>
+<li><strong>明文</strong>：加密前的消息；</li>
+<li><strong>密文</strong>：加密后的文本；</li>
+<li><strong>密钥</strong>：掌握特殊“钥匙”的人才能解密文本，密钥本质是一个字符串，常用位（bit）度量长度；</li>
+<li><strong>加密</strong>：实现机密性最常用的手段，按密钥使用方式可分为对称加密和非对称加密；</li>
+<li><strong>解密</strong>：使用密钥还原明文；</li>
+<li><strong>加密算法</strong>：加解密操作所使用的算法。算法本身通常是公开的，算法使用的密钥则必须保密。</li>
+</ul>
+<h3 id="22-对称加密与非对称加密">2.2 对称加密与非对称加密</h3>
+<p><strong>对称加密</strong></p>
+<ul>
+<li>特点：只使用一个密钥，密钥必须保密，常见算法如 AES；</li>
+<li>优点：运算速度快；</li>
+<li>缺点：密钥需要在交换双方共享，一旦被窃取，消息会被破解，无法做到安全的密钥交换。</li>
+</ul>
+<p><strong>非对称加密</strong></p>
+<ul>
+<li>特点：使用两个密钥——公钥可以任意分发，私钥必须保密，常见算法如 RSA；</li>
+<li>优点：黑客获取公钥无法破解密文，解决了密钥交换问题；</li>
+<li>缺点：运算速度非常慢。</li>
+</ul>
+<p><strong>混合加密</strong>：实际场景中通常把对称加密与非对称加密结合起来使用。</p>
+<h3 id="23-身份认证">2.3 身份认证</h3>
+<ul>
+<li>公钥加密、私钥解密：作用是加密信息；</li>
+<li>私钥加密、公钥解密：作用是身份认证。</li>
+</ul>
+<h3 id="24-摘要算法digest-algorithm">2.4 摘要算法（Digest Algorithm）</h3>
+<p>摘要算法也就是散列函数、哈希函数（Hash Function），能把任意长度的数据“压缩”成固定长度、且独一无二的摘要字符串，相当于给数据生成了一个数字指纹。</p>
+<p><strong>作用</strong>：保证信息的完整性。</p>
+<p><strong>特性</strong>：</p>
+<ul>
+<li>不可逆：只有算法，没有密钥，只能加密不能解密；</li>
+<li>难题友好性：想要破解只能暴力枚举；</li>
+<li>发散性：原文哪怕只改动一点点，摘要就会发生剧烈变化；</li>
+<li>抗碰撞性：原文不同，计算出的摘要也要不同。</li>
+</ul>
+<p>常见摘要算法：MD5、SHA1、SHA2（SHA224、SHA256、SHA384）。</p>
+<h3 id="25-数字签名与数字证书">2.5 数字签名与数字证书</h3>
+<p><strong>数字签名</strong>：使用私钥对摘要加密生成签名，接收方用公钥对签名解密后进行验签，实现身份认证和不可否认。</p>
+<p><img src="/blog/wechat-pay/sign-verify-flow.png" alt="签名与验签流程"></p>
+<p><strong>数字证书</strong>：解决“公钥信任”问题，防止黑客伪造公钥。公钥不能直接分发，必须通过由 CA 颁发的数字证书来分发。HTTPS 握手时，浏览器会校验网站证书链、确认域名与证书一致，再与服务器交换加密信息。</p>
+<p><img src="/blog/wechat-pay/https-cert-flow.png" alt="HTTPS 数字证书信任流程"></p>
+<h3 id="26-微信支付中的两类证书">2.6 微信支付中的两类证书</h3>
+<ul>
+<li><strong>商户证书</strong>：由商户申请，包含商户号、公司名称、公钥信息，在商户后台申请；</li>
+<li><strong>平台证书</strong>：由微信支付负责申请，包含微信支付平台标识、公钥信息，商户用其中的公钥进行验签。</li>
+</ul>
+<p>商户平台「账户中心 → API 安全」页可申请商户 API 证书、设置 API 密钥与 APIv3 密钥：</p>
+<p><img src="/blog/wechat-pay/merchant-cert-platform.png" alt="商户平台 API 安全页"></p>
+<p>平台证书可通过 API 接口下载，其中封装了微信支付的公钥，用于商户验签与敏感字段解密：</p>
+<p><img src="/blog/wechat-pay/platform-cert-doc.png" alt="平台证书获取说明"></p>
+<h2 id="三案例项目骨架">三、案例项目骨架</h2>
+<p>实战案例基于 Spring Boot 搭建，先把后端工程、接口文档、统一返回结构、数据库和持久层准备好。整体分层包结构大致为：<code>controller</code>（接口）、<code>service</code> / <code>service.impl</code>（业务）、<code>mapper</code>（持久层）、<code>entity</code>（实体）、<code>enums</code>（状态与接口地址枚举）、<code>vo</code>（返回对象）、<code>config</code>（配置）、<code>util</code>（工具）、<code>task</code>（定时任务）。</p>
+<h3 id="31-spring-boot-初始化">3.1 Spring Boot 初始化</h3>
+<ul>
+<li>Java 版本选择 8，构建方式 Maven；</li>
+<li>引入 Spring Boot Web 依赖：</li>
+</ul>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-web&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<ul>
+<li>配置服务端口与应用名称：</li>
+</ul>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">server</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  port</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">8090</span><span style="color:#6A737D;--shiki-dark:#6A737D">          # 服务端口</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  application</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">payment-demo</span><span style="color:#6A737D;--shiki-dark:#6A737D"> # 应用名称</span></span></code></pre>
+<h3 id="32-接口文档swagger2">3.2 接口文档：Swagger2</h3>
+<p>引入 springfox-swagger2 与 springfox-swagger-ui（课件版本 2.7.0），编写配置类开启 Swagger：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">EnableSwagger2</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Swagger2Config</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Docket </span><span style="color:#6F42C1;--shiki-dark:#B392F0">docket</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Docket</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(DocumentationType.SWAGGER_2)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">apiInfo</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ApiInfoBuilder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">title</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"微信支付案例接口文档"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>Controller 上可用 <code>@Api(tags = "商品管理")</code>、<code>@ApiOperation("测试接口")</code> 注解标注接口，启动后访问 <code>/swagger-ui.html</code> 查看和测试接口。</p>
+<h3 id="33-统一返回结果与-lombok">3.3 统一返回结果与 Lombok</h3>
+<p>引入 Lombok 简化实体类开发。定义统一结果类 <code>R</code>，包含状态码 <code>code</code>、消息 <code>message</code>、数据 <code>data</code>，并提供 <code>ok()</code>、<code>error()</code>、<code>data()</code> 链式方法；需要链式调用时在类上加 <code>@Accessors(chain = true)</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Data</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Accessors</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">chain</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> true</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#6A737D;--shiki-dark:#6A737D">// 链式操作</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> R</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Integer code;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String message;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> data </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> HashMap&#x3C;>();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> R </span><span style="color:#6F42C1;--shiki-dark:#B392F0">ok</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        R r </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> R</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        r.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setCode</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">0</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        r.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"成功"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> r;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> R </span><span style="color:#6F42C1;--shiki-dark:#B392F0">error</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        R r </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> R</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        r.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setCode</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">-</span><span style="color:#005CC5;--shiki-dark:#79B8FF">1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        r.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"失败"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> r;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> R </span><span style="color:#6F42C1;--shiki-dark:#B392F0">data</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">key</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, Object </span><span style="color:#E36209;--shiki-dark:#FFAB70">value</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        this</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.data.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(key, value);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> this</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>JSON 时间格式在配置文件中统一指定：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  jackson</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    date-format</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">yyyy-MM-dd HH:mm:ss</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    time-zone</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">GMT+8</span></span></code></pre>
+<h3 id="34-数据库与-mybatis-plus">3.4 数据库与 MyBatis-Plus</h3>
+<ul>
+<li>创建数据库 <code>payment_demo</code>，在 IDEA 中配置 MySQL 数据源并执行建表 SQL；</li>
+<li>引入 MySQL 驱动与 <code>mybatis-plus-boot-starter</code>（课件版本 3.3.1）；</li>
+<li>配置数据源连接（账号密码按本地环境填写，不要提交到仓库）：</li>
+</ul>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  datasource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    driver-class-name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">com.mysql.cj.jdbc.Driver</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">jdbc:mysql://localhost:3306/payment_demo?serverTimezone=GMT%2B8&#x26;characterEncoding=utf-8</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">root</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">your_password</span></span></code></pre>
+<ul>
+<li>配置 SQL 日志与 Mapper XML 位置：</li>
+</ul>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">mybatis-plus</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  configuration</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    log-impl</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">org.apache.ibatis.logging.stdout.StdOutImpl</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  mapper-locations</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">classpath:com/atguigu/paymentdemo/mapper/xml/*.xml</span></span></code></pre>
+<ul>
+<li>实体类继承 <code>BaseEntity</code>，Mapper 接口继承 <code>BaseMapper&#x3C;T></code>，Service 接口继承 <code>IService&#x3C;T></code>、实现类继承 <code>ServiceImpl&#x3C;M, T></code>；</li>
+<li>定义枚举（订单状态 <code>OrderStatus</code>、交易状态 <code>WxTradeState</code>、退款状态 <code>WxRefundStatus</code>、支付类型 <code>PayType</code>、接口地址 <code>WxApiType</code>、通知类型 <code>WxNotifyType</code>）与工具类（HTTP 工具、订单号工具）。</li>
+</ul>
+<p>实体类目录结构示例：</p>
+<p><img src="/blog/wechat-pay/entity-classes.png" alt="实体类结构"></p>
+<p>状态与接口地址枚举目录示例：</p>
+<p><img src="/blog/wechat-pay/enums-dir.png" alt="枚举目录"></p>
+<blockquote>
+<p>Maven 默认不会把 <code>src/main/java</code> 下的资源文件打包到 target，需要在 pom 的 <code>&#x3C;build></code> 中配置 resources 节点，保证 <code>**/*.xml</code> 随源码一起打包。</p>
+</blockquote>
+<h3 id="35-前端环境">3.5 前端环境</h3>
+<p>前端基于 Vue 脚手架：安装 Node.js，配置淘宝镜像后全局安装 <code>@vue/cli</code>，<code>vue create</code> 创建项目，进入目录执行 <code>npm run serve</code> 启动（可用 <code>--port</code> 指定端口）；可安装 VSCode 及 Vetur、VueHelper 等插件辅助开发。</p>
+<h2 id="四apiv3-接入准备">四、APIv3 接入准备</h2>
+<h3 id="41-读取支付参数">4.1 读取支付参数</h3>
+<p>把支付相关配置（商户号、AppID、商户私钥路径、APIv3 密钥、通知域名等）放到 <code>wxpay.properties</code>，通过配置类 <code>WxPayConfig</code> 读取为 Bean。项目中可引入 <code>spring-boot-configuration-processor</code>（<code>optional</code> 标记为 true），让配置文件与代码参数之间自动提示、定位。</p>
+<p>可在测试 Controller 中读取商户号验证参数是否注入成功：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Api</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">tags</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "测试控制器"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RestController</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequestMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/test"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> TestController</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Resource</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> WxPayConfig wxPayConfig;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">GetMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/get-wx-pay-config"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> R </span><span style="color:#6F42C1;--shiki-dark:#B392F0">getWxPayConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String mchId </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> wxPayConfig.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getMchId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> R.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">ok</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">data</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"mchId"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, mchId);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="42-加载商户私钥">4.2 加载商户私钥</h3>
+<p>商户私钥文件（<code>apiclient_key.pem</code>）复制到项目目录，使用 SDK 提供的 <code>PemUtil.loadPrivateKey</code> 加载为 <code>PrivateKey</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> PrivateKey </span><span style="color:#6F42C1;--shiki-dark:#B392F0">getPrivateKey</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String filename) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    try</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> PemUtil.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">loadPrivateKey</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> FileInputStream</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(filename));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    } </span><span style="color:#D73A49;--shiki-dark:#F97583">catch</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (FileNotFoundException </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        throw</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RuntimeException</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"私钥文件不存在"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, e);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="43-引入-sdk-与-json-处理">4.3 引入 SDK 与 JSON 处理</h3>
+<p>APIv3 官方 SDK 封装了请求签名生成、应答签名验证与平台证书自动更新，引入 <code>wechatpay-apache-httpclient</code>；接口与通知报文使用 JSON，引入 Gson：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>com.github.wechatpay-apiv3&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>wechatpay-apache-httpclient&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>0.3.0&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>com.google.code.gson&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>gson&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="44-获取签名验证器与-httpclient">4.4 获取签名验证器与 HttpClient</h3>
+<p>证书与密钥在各环节的使用关系（M 代表商户私钥/公钥，W 代表微信支付公钥/私钥）：</p>
+<p><img src="/blog/wechat-pay/cert-key-sequence.png" alt="证书与密钥使用时序"></p>
+<p><strong>签名验证器</strong>：平台证书封装了微信的公钥，用于验签；使用 <code>ScheduledUpdateCertificatesVerifier</code> 可以定时更新平台证书，无需手动传入证书。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ScheduledUpdateCertificatesVerifier </span><span style="color:#6F42C1;--shiki-dark:#B392F0">getVerifier</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    PrivateKey privateKey </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> getPrivateKey</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(privateKeyPath);</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    // 私钥签名对象（签名）</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    PrivateKeySigner privateKeySigner </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> PrivateKeySigner</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(mchSerialNo, privateKey);</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    // 身份认证对象（验签）</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    WechatPay2Credentials credentials </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> WechatPay2Credentials</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(mchId, privateKeySigner);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ScheduledUpdateCertificatesVerifier</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            credentials,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            apiV3Key.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getBytes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(StandardCharsets.UTF_8));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><strong>HttpClient 对象</strong>：是建立远程连接的基础，通过 SDK 的 Builder 构造，构造出的 HttpClient 会自动处理签名、验签并更新证书：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> CloseableHttpClient </span><span style="color:#6F42C1;--shiki-dark:#B392F0">getWxPayClient</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(ScheduledUpdateCertificatesVerifier verifier) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    PrivateKey privateKey </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> getPrivateKey</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(privateKeyPath);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    WechatPayHttpClientBuilder builder </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> WechatPayHttpClientBuilder.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">create</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">withMerchant</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(mchId, mchSerialNo, privateKey)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">withValidator</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> WechatPay2Validator</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(verifier));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> builder.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h2 id="五native-下单">五、Native 下单</h2>
+<h3 id="51-支付流程">5.1 支付流程</h3>
+<p>Native 扫码支付的整体时序：</p>
+<ol>
+<li>商户后台生成订单；</li>
+<li>商户调用统一下单 API；</li>
+<li>微信支付系统预支付交易；</li>
+<li>微信返回支付二维码链接 <code>code_url</code>；</li>
+<li>商户把二维码展示给用户，用户打开微信扫一扫；</li>
+<li>微信校验链接有效性，用户确认支付、输入密码；</li>
+<li>微信验证授权并完成交易；</li>
+<li>微信异步回调商户支付结果；</li>
+<li>商户根据回调或主动查单确认订单状态，再进行后续发货等操作。</li>
+</ol>
+<p><img src="/blog/wechat-pay/native-sequence.png" alt="Native 扫码支付时序图"></p>
+<h3 id="52-接口分层">5.2 接口分层</h3>
+<ul>
+<li><code>WxPayController</code>：暴露 <code>/api/wx-pay</code> 相关接口；</li>
+<li><code>WxPayService</code> 与 <code>WxPayServiceImpl</code>：封装下单业务逻辑。</li>
+</ul>
+<p>Controller 接收商品 ID，调用 Service 返回二维码链接和订单号：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">ApiOperation</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"调用统一下单 API，生成支付二维码"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">PostMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/native/{productId}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> R </span><span style="color:#6F42C1;--shiki-dark:#B392F0">nativePay</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(@</span><span style="color:#D73A49;--shiki-dark:#F97583">PathVariable</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Long productId) throws Exception {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"发起支付请求"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> map </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> wxPayService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">nativePay</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(productId);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> R.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">ok</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setData</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(map);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="53-下单-service-逻辑">5.3 下单 Service 逻辑</h3>
+<p>Service 层处理要点：</p>
+<ol>
+<li><strong>订单防重</strong>：先按商品 ID 查询是否存在未支付订单，存在则直接复用已有订单和已保存的二维码，避免重复下单；</li>
+<li><strong>生成订单</strong>：填充标题、商品 ID、金额、未支付状态后入库；</li>
+<li><strong>组装请求体</strong>：<code>appid</code>、<code>mchid</code>、<code>description</code>、<code>out_trade_no</code>、<code>notify_url</code>、<code>amount</code>（<code>total</code> 总金额、<code>currency</code> 币种 CNY）；</li>
+<li>把参数序列化为 JSON，以 <code>application/json</code> 发送 POST 请求；</li>
+<li>解析响应得到 <code>code_url</code>，把二维码链接回填到订单；</li>
+<li>返回二维码链接和订单号给前端。</li>
+</ol>
+<p>下单请求体字段示例：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">Gson gson </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Gson</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> paramsMap </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> HashMap&#x3C;>();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">paramsMap.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"appid"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, wxPayConfig.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getAppid</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">paramsMap.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"mchid"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, wxPayConfig.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getMchId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">paramsMap.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"description"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, orderInfo.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getTitle</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">paramsMap.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"out_trade_no"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, orderInfo.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderNo</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">paramsMap.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"notify_url"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        wxPayConfig.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getNotifyDomain</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">concat</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(WxNotifyType.NATIVE_NOTIFY.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getType</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> amountMap </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> HashMap&#x3C;>();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">amountMap.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"total"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, orderInfo.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getTotalFee</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">amountMap.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"currency"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"CNY"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">paramsMap.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"amount"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, amountMap);</span></span></code></pre>
+<blockquote>
+<p>金额注意：微信支付金额单位为<strong>分</strong>，入参、落库与后续金额一致性校验都要保持单位一致。</p>
+</blockquote>
+<h2 id="六支付通知异步回调">六、支付通知（异步回调）</h2>
+<h3 id="61-内网穿透">6.1 内网穿透</h3>
+<p>本地开发时，微信服务器无法直接访问本机服务，需要用内网穿透工具（如 ngrok）把本地端口暴露为公网地址：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">ngrok</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> http</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 8090</span></span></code></pre>
+<p>启动后得到的公网地址填入支付配置的通知域名；每次重启 ngrok 地址变化后，都需要同步修改通知配置。</p>
+<h3 id="62-通知应答规则">6.2 通知应答规则</h3>
+<ul>
+<li>用户支付完成后，微信会把支付结果和用户信息发送给商户，商户需要接收处理并返回应答；</li>
+<li>应答不符合规范或超时，微信会判定通知失败，并按策略重试（频率大致为 15s、15s、30s、3m、10m、20m、30m……总计约 24h），但不保证通知最终一定成功；</li>
+<li>成功应答必须为 <strong>200 或 204</strong>，否则视为失败应答；商户收到通知后应在 <strong>5 秒内</strong>返回应答报文，否则微信会重复发送通知。</li>
+</ul>
+<h3 id="63-验签解密与订单处理">6.3 验签、解密与订单处理</h3>
+<p>回调处理的核心步骤：</p>
+<ol>
+<li><strong>读取通知报文</strong>：把请求体读取为字符串；</li>
+<li><strong>验签</strong>：参考 SDK 源码中的 <code>WechatPay2Validator</code> 封装通知验签工具类 <code>WechatPay2ValidatorForRequest</code>，用 <code>verifier</code>、请求体与请求 ID 校验请求签名，验签失败返回 500 与错误应答；</li>
+<li><strong>解密报文</strong>：通知中的 <code>resource</code> 使用 AES-256-GCM 加密，取出 <code>ciphertext</code>（密文）、<code>nonce</code>（随机串）、<code>associated_data</code>（附加数据），用 APIv3 密钥通过 <code>AesUtil.decryptToString</code> 解密得到明文 JSON；</li>
+<li><strong>处理订单</strong>：解析明文得到 <code>out_trade_no</code>，更新订单状态为支付成功，并记录支付日志；</li>
+<li><strong>成功应答</strong>：返回 <code>200</code> 与 <code>{"code": "SUCCESS", "message": "成功"}</code>。</li>
+</ol>
+<h3 id="64-支付日志记录">6.4 支付日志记录</h3>
+<p>支付日志实体留存订单号、微信支付单号 <code>transaction_id</code>、交易类型 <code>trade_type</code>、交易状态 <code>trade_state</code>、支付金额 <code>payer_total</code>，并把完整通知原文存入 <code>content</code> 字段，便于事后对账排查。</p>
+<h3 id="65-重复通知与并发控制">6.5 重复通知与并发控制</h3>
+<p>微信可能把同一通知多次发送给商户，商户系统必须正确处理重复通知。官方对回调处理的注意事项如下：</p>
+<p><img src="/blog/wechat-pay/callback-notice-rule.png" alt="支付回调处理注意事项"></p>
+<ul>
+<li><strong>幂等性</strong>：处理前先查询业务数据状态，若订单已经是已支付状态，直接返回成功，不再重复处理；</li>
+<li><strong>并发控制</strong>：在更新订单状态、处理订单之前，使用数据锁进行并发控制，避免函数重入造成数据混乱。示例使用 <code>ReentrantLock</code> 的 <code>tryLock</code>：</li>
+</ul>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ReentrantLock lock </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ReentrantLock</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">// 在业务数据状态检查和处理之前加锁</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (lock.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">tryLock</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    try</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // 处理重复通知：已处理则直接返回</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String orderStatus </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orderInfoService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderStatus</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(orderNo);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#D73A49;--shiki-dark:#F97583">!</span><span style="color:#24292E;--shiki-dark:#E1E4E8">OrderStatus.NOTPAY.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getType</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">equals</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(orderStatus)) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            return</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // 更新订单状态、记录支付日志</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    } </span><span style="color:#D73A49;--shiki-dark:#F97583">finally</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        lock.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">unlock</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(); </span><span style="color:#6A737D;--shiki-dark:#6A737D">// 必须主动释放锁</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h2 id="七订单查询取消与超时关单">七、订单查询、取消与超时关单</h2>
+<h3 id="71-查询本地订单状态">7.1 查询本地订单状态</h3>
+<p>后端提供查询本地订单状态的接口（如 <code>GET /query-order-status/{orderNo}</code>）：订单已支付返回成功，否则返回“支付中”。前端在二维码页面用定时器定时轮询订单状态（示例每 3 秒一次），支付成功后清除定时器，延迟跳转成功页。</p>
+<h3 id="72-用户取消订单">7.2 用户取消订单</h3>
+<p>用户主动取消订单时：</p>
+<ol>
+<li>调用微信支付的关单接口（请求体携带商户号 <code>mchid</code>）；</li>
+<li>更新商户端订单状态为已取消（<code>OrderStatus.CANCEL</code>）。</li>
+</ol>
+<h3 id="73-主动查单核实">7.3 主动查单核实</h3>
+<p>商户后台未收到异步通知时，应主动调用微信查单接口同步订单状态。查单为 GET 请求，URL 拼接订单号与商户号，返回结果中的 <code>trade_state</code> 用于判断：</p>
+<ul>
+<li><code>SUCCESS</code>：核实已支付，补更新本地订单状态为成功，并记录支付日志；</li>
+<li><code>NOTPAY</code>：核实仍未支付，调用关单接口关闭订单，并把本地订单状态置为已关闭（<code>CLOSED</code>）。</li>
+</ul>
+<h3 id="74-定时处理超时未支付订单">7.4 定时处理超时未支付订单</h3>
+<p>Spring 提供 Spring Task 实现任务调度：启动类加 <code>@EnableScheduling</code>，任务方法上用 <code>@Scheduled(cron = ...)</code> 定义执行周期。</p>
+<p>定时任务逻辑：</p>
+<ol>
+<li>周期性（示例每 30 秒）扫描创建超过指定时长（示例 5 分钟）、且仍未支付的订单；</li>
+<li>按订单号调用查单接口核实状态；</li>
+<li>已支付：补更新本地订单状态为成功，并记录支付日志；</li>
+<li>未支付：调用关单接口关闭订单，并把本地订单状态置为已关闭。</li>
+</ol>
+<p>查询超时订单的条件：用 <code>Instant.now().minus(Duration.ofMinutes(minutes))</code> 得到时间下界，按 <code>order_status = 未支付</code> 且 <code>create_time &#x3C;= 下界时间</code> 过滤。</p>
+<h2 id="八退款与退款核实">八、退款与退款核实</h2>
+<h3 id="81-申请退款">8.1 申请退款</h3>
+<p>退款流程：</p>
+<ol>
+<li>根据订单号查询订单信息；</li>
+<li>创建本地退款单（订单号、退款单号、原订单金额、退款金额、退款原因）；</li>
+<li>组装退款请求参数（<code>out_trade_no</code>、<code>out_refund_no</code>、<code>reason</code>、<code>notify_url</code>、<code>amount</code> 中的 <code>refund</code> 退款金额、<code>total</code> 原订单金额、<code>currency</code> 币种）调用退款 API；</li>
+<li>更新订单为退款处理中（<code>OrderStatus.REFUND_PROCESSING</code>），并更新退款单状态。退款业务建议加事务（<code>@Transactional(rollbackFor = Exception.class)</code>），异常时回滚。</li>
+</ol>
+<h3 id="82-查询退款与定时核实">8.2 查询退款与定时核实</h3>
+<ul>
+<li>提供按退款单号查询退款状态的接口；</li>
+<li>定时任务扫描申请超过指定时长、仍处于退款中（<code>WxRefundStatus.PROCESSING</code>）的退款单，主动调用微信退款查询接口核实；</li>
+<li>核实退款成功（<code>SUCCESS</code>）：更新订单为退款成功（<code>REFUND_SUCCESS</code>），并更新退款单；</li>
+<li>核实退款异常（<code>ABNORMAL</code>）：更新订单为退款异常（<code>REFUND_ABNORMAL</code>），并更新退款单。</li>
+</ul>
+<h3 id="83-退款结果通知">8.3 退款结果通知</h3>
+<p>微信退款状态改变后会向商户推送退款结果通知。处理方式与支付通知一致：先验签，再 AES-GCM 解密报文，更新对应订单与退款单状态；同样需要保证幂等，必要时加锁。</p>
+<h2 id="九账单下载">九、账单下载</h2>
+<p>微信支付提供交易账单（<code>tradebill</code>）和资金账单（<code>fundflowbill</code>）两类：</p>
+<ol>
+<li>调用申请账单接口，传入账单日期 <code>bill_date</code> 与类型，获取 <code>download_url</code>；</li>
+<li>下载账单使用<strong>无签名客户端</strong>请求该地址，拿到账单文件内容。</li>
+</ol>
+<h2 id="十apiv2-与-apiv3-对比">十、APIv2 与 APIv3 对比</h2>
+<p>V2 和 V3 是基于两套接口标准设计的接口，目前大部分接口已升级到 V3。主要差异：</p>
+<table>
+<thead>
+<tr>
+<th>对比项</th>
+<th>V3</th>
+<th>V2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>参数格式</td>
+<td>JSON</td>
+<td>XML</td>
+</tr>
+<tr>
+<td>提交方式</td>
+<td>POST、GET、PUT、PATCH、DELETE</td>
+<td>POST</td>
+</tr>
+<tr>
+<td>回调加密</td>
+<td>AES-256-GCM 加密</td>
+<td>无需加密</td>
+</tr>
+<tr>
+<td>敏感信息加密</td>
+<td>RSA 加密</td>
+<td>RSA 加密</td>
+</tr>
+<tr>
+<td>编码方式</td>
+<td>UTF-8</td>
+<td>UTF-8</td>
+</tr>
+<tr>
+<td>签名方式</td>
+<td>非对称密钥 SHA256-RSA</td>
+<td>MD5 或 HMAC-SHA256</td>
+</tr>
+</tbody>
+</table>
+<p><img src="/blog/wechat-pay/v2-v3-compare.png" alt="APIv2 与 APIv3 版本区别"></p>
+<h3 id="101-v2-统一下单要点">10.1 V2 统一下单要点</h3>
+<p>V2 仍以 XML 作为报文格式，流程为：组装参数（<code>appid</code>、<code>mch_id</code>、<code>nonce_str</code> 随机串、<code>body</code>、<code>out_trade_no</code>、<code>total_fee</code>、<code>spbill_create_ip</code>、<code>notify_url</code>、<code>trade_type=NATIVE</code>）→ 用商户 APIv2 密钥生成带签名的 XML → 以 HTTPS POST 发送到统一下单接口 → 把 XML 响应转为 Map 做通信/业务错误判断 → 取出 <code>code_url</code> 保存并返回二维码。</p>
+<h3 id="102-v2-回调要点">10.2 V2 回调要点</h3>
+<p>V2 回调先通过 <code>WXPayUtil.isSignatureValid</code> 验签，再解析 XML；除判断通信与业务成功外，还要<strong>校验回调金额与商户侧订单金额一致</strong>；通过后再加锁、按幂等规则更新订单状态并记录支付日志，最终返回 XML 格式的成功应答。</p>
+<h2 id="十一关键要点小结">十一、关键要点小结</h2>
+<ul>
+<li><strong>安全职责分清</strong>：商户私钥用于签名，平台证书公钥用于验签；公钥加密用于加密信息，私钥加密用于身份认证。</li>
+<li><strong>回调必须幂等</strong>：微信会重复推送通知，处理前先查订单状态，已处理直接返回成功。</li>
+<li><strong>并发要加锁</strong>：状态更新与日志记录前后用锁控制，避免重入导致数据错乱。</li>
+<li><strong>金额单位与一致性</strong>：金额一律以分为单位；回调时要校验返回金额与本地订单金额一致，防止金额篡改。</li>
+<li><strong>主动查单兜底</strong>：异步通知可能丢失或超时，定时任务要主动查单核实，完成补单或关单；退款同样需要定时核实退款状态。</li>
+<li><strong>密钥与证书不落地</strong>：商户号、密钥、私钥、证书属于敏感信息，不能提交到公开仓库或写进博客正文。</li>
+</ul> <div class="post-copyright"> <p><strong>本文标题：</strong>微信支付实战：接入准备、Native 下单、回调通知与退款全流程</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/wechat-pay/">https://zhanzhenguan.github.io/blog/wechat-pay/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-web/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</div> </a> <a class="next" href="/blog/mqtt-1-intro/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">MQTT 入门：发布订阅、EMQX 与控制报文</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"微信支付实战：接入准备、Native 下单、回调通知与退款全流程","description":"基于 Java + Spring Boot 梳理微信支付实战：产品形态与接入资料、支付安全基础、项目骨架、APIv3 下单与回调验签解密、订单超时关单、退款与退款核实、账单下载，以及 V2/V3 版本差异对照。","datePublished":"2026-11-25T00:00:00.000Z","dateModified":"2026-11-25T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/wechat-pay/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

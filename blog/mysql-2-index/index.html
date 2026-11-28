@@ -1,0 +1,254 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 MySQL 索引原理与优化：索引作为有序数据结构减少磁盘 I/O；B+Tree 非叶子节点只存键、叶子节点双向链表相连的结构与四个核心优势、千万级表 2-3 层树高的 I/O 估算；聚簇索引叶子存整行、二级索引叶子存主键值；回表与覆盖索引；联合索引最左前缀原则与索引下推（MySQL 5.6+）；EXPLAIN 的 type/Extra/key/rows 判读；深分页延迟关联、JOIN 小表驱动大表、ORDER BY 索引排序、建索引六要六不要与 COUNT 优化。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀"><meta property="og:description" content="整理 MySQL 索引原理与优化：索引作为有序数据结构减少磁盘 I/O；B+Tree 非叶子节点只存键、叶子节点双向链表相连的结构与四个核心优势、千万级表 2-3 层树高的 I/O 估算；聚簇索引叶子存整行、二级索引叶子存主键值；回表与覆盖索引；联合索引最左前缀原则与索引下推（MySQL 5.6+）；EXPLAIN 的 type/Extra/key/rows 判读；深分页延迟关联、JOIN 小表驱动大表、ORDER BY 索引排序、建索引六要六不要与 COUNT 优化。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/mysql-2-index/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/mysql/">MySQL</a>  <span class="sep">/</span> <span class="current">MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 5 分钟</span> <span>· 1802 字</span> <span class="meta-tags"> <a class="tag" href="/tags/mysql/">#MySQL</a><a class="tag" href="/tags/68051bf4/">#数据库</a><a class="tag" href="/tags/b271e427/">#索引</a><a class="tag" href="/tags/b-tree/">#B+Tree</a><a class="tag" href="/tags/c2f42bd2/">#性能优化</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>   <p>承接基础入门篇，这一篇聚焦 MySQL 性能优化的绝对核心——索引。面向 Java 开发梳理索引的数据结构、存储形态、使用规则与常见优化手段，SQL 与配置为通用示例。</p>
+<h2 id="一索引是什么">一、索引是什么</h2>
+<p>抛开课本定义：查新华字典时不会从第一页逐个翻，而是先查拼音目录逐层缩小范围，这就是索引的作用。MySQL 的索引是一种<strong>有序的数据结构</strong>，让数据库以极少的磁盘 I/O 定位目标数据。</p>
+<p>磁盘 I/O 之所以关键，是因为内存读取在纳秒级、磁盘读取在毫秒级，两者相差约 <strong>10 万倍</strong>；一次磁盘寻道的时间，CPU 可以执行数十万条指令。因此衡量数据库性能的核心指标不是”扫描了多少行”，而是”用了多少次磁盘 I/O”。</p>
+<h2 id="二btree索引的发动机">二、B+Tree：索引的发动机</h2>
+<h3 id="21-为什么选-btree">2.1 为什么选 B+Tree</h3>
+<p>数据库索引可以用哈希表、二叉树、B 树等多种结构，InnoDB 最终选择 <strong>B+Tree</strong>，这是对”数据量大、高并发、支持范围查询”三大需求权衡后的结果。</p>
+<h3 id="22-结构长什么样">2.2 结构长什么样</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>            [8 | 15]                 ← 非叶子节点（只存索引键，不存数据）</span></span>
+<span class="line"><span>            /   |   \</span></span>
+<span class="line"><span>       [3|6]  [10|12]  [18|22]       ← 非叶子节点，继续缩小范围</span></span>
+<span class="line"><span>        / \    /  \      /  \</span></span>
+<span class="line"><span>     [1|2]↔[4|5]↔[6|7] ...           ← 叶子节点（存全部数据，双向链表连接）</span></span></code></pre>
+<p>看懂三句话：</p>
+<ol>
+<li>上层是非叶子节点，相当于”路牌”，告诉你往哪走，本身不存数据；</li>
+<li>最下层是叶子节点，相当于”目的地”，存储所有记录；</li>
+<li>所有叶子节点之间用双向链表相连，方便前后遍历。</li>
+</ol>
+<p><img src="/blog/mysql-2-index/mysql-2-index-01.png" alt="B+Tree 索引结构"></p>
+<h3 id="23-四个核心优势">2.3 四个核心优势</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>说明</th>
+<th>带来的好处</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数据全在叶子节点</td>
+<td>非叶子节点只存键值，不放数据</td>
+<td>一个节点能装更多键，树更矮，磁盘 I/O 更少</td>
+</tr>
+<tr>
+<td>叶子节点是双向链表</td>
+<td>所有叶子节点首尾相连</td>
+<td>范围查询（<code>BETWEEN</code>、<code>></code>、<code>&#x3C;</code>、<code>ORDER BY</code>）极快</td>
+</tr>
+<tr>
+<td>树高极低</td>
+<td>千万级数据表树高通常只有 3-4 层</td>
+<td>一次查询只需 3-4 次磁盘 I/O</td>
+</tr>
+<tr>
+<td>查询稳定</td>
+<td>每次都要走到叶子节点</td>
+<td><code>O(log n)</code> 复杂度，性能可预测</td>
+</tr>
+</tbody>
+</table>
+<h3 id="24-一次索引查询做了多少次-io">2.4 一次索引查询做了多少次 I/O</h3>
+<p>以 2000 万行的表为例估算：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>B+Tree 每个节点约 16KB（InnoDB 页大小）</span></span>
+<span class="line"><span>主键 BIGINT（8 字节）+ 指针（6 字节），每个节点可存约 1170 个键</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>层 1（根节点）：1 个节点，1170 个指针</span></span>
+<span class="line"><span>层 2：1170 个节点，1170 × 1170 ≈ 137 万条键</span></span>
+<span class="line"><span>层 3（叶子）：137 万 × 1170 ≈ 16 亿行 → 远超 2000 万</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>所以 2000 万数据只需要 2-3 层，一次主键查询 2-3 次磁盘 I/O。</span></span></code></pre>
+<p>这就是大表仍能”秒级”响应的秘密：靠极矮的树高把磁盘 I/O 压到个位数。</p>
+<h2 id="三聚簇索引与二级索引数据存在哪">三、聚簇索引与二级索引：数据存在哪</h2>
+<h3 id="31-聚簇索引主键索引">3.1 聚簇索引（主键索引）</h3>
+<p>InnoDB 中，表数据按<strong>主键顺序</strong>物理存储在 B+Tree 的叶子节点里，也就是说主键索引的叶子节点就是<strong>一整行数据</strong>。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>聚簇索引（主键 id）：</span></span>
+<span class="line"><span>[id=1, 张三, 25, 北京] ↔ [id=2, 李四, 30, 上海] ↔ [id=3, 王五, 28, 广州]</span></span>
+<span class="line"><span>↑ 叶子节点直接存储整行数据的所有列</span></span></code></pre>
+<p>这也解释了为什么自增主键很重要：主键递增时，新数据直接追加到 B+Tree 末尾；如果用随机 UUID，就要在树中间插入，可能触发<strong>页分裂</strong>（一个数据页装不下，被迫拆成两页），性能大幅下降。</p>
+<h3 id="32-二级索引辅助索引">3.2 二级索引（辅助索引）</h3>
+<p>除主键以外的索引统称二级索引。它的叶子节点存的不是整行数据，而是<strong>主键值</strong>。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>二级索引（name 列上的索引）：</span></span>
+<span class="line"><span>[李四, id=2] ↔ [王五, id=3] ↔ [张三, id=1]</span></span>
+<span class="line"><span>↑ 叶子节点只存 (索引键, 主键值)，不存其他列</span></span></code></pre>
+<h3 id="33-回表是什么为什么要尽量避免">3.3 回表是什么，为什么要尽量避免</h3>
+<p>以 <code>SELECT * FROM user WHERE name = '张三';</code> 为例：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>第 1 步：在 name 索引树中查找"张三" → 得到主键 id=1</span></span>
+<span class="line"><span>第 2 步：拿着 id=1 再去主键索引树中查找 → 得到整行数据</span></span></code></pre>
+<p>第 2 步就是<strong>回表</strong>——多走了一次主键索引树的查找，相当于多一倍磁盘 I/O。</p>
+<p><img src="/blog/mysql-2-index/mysql-2-index-02.png" alt="回表与覆盖索引"></p>
+<h3 id="34-覆盖索引一劳永逸避免回表">3.4 覆盖索引：一劳永逸避免回表</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ❌ 需要回表：name 索引只有 name + id，age、city 要回表取</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id, </span><span style="color:#D73A49;--shiki-dark:#F97583">name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, age, city </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> name</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '张三'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅ 覆盖索引：建包含所有所需列的联合索引</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="color:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> idx_name_age_city</span><span style="color:#D73A49;--shiki-dark:#F97583"> ON</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user(</span><span style="color:#D73A49;--shiki-dark:#F97583">name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, age, city);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 所需列都在索引里，不需要回表</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, age, city </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> name</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '张三'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>判断是否命中覆盖索引：执行 <code>EXPLAIN</code> 看 Extra 列，出现 <code>Using index</code> 即表示覆盖索引生效。</p>
+<h2 id="四联合索引与最左前缀原则">四、联合索引与最左前缀原则</h2>
+<h3 id="41-最左前缀原则">4.1 最左前缀原则</h3>
+<p>联合索引按创建时的列顺序排序，就像字典先按拼音首字母排、再按第二个字母排：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="color:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> idx_a_b_c</span><span style="color:#D73A49;--shiki-dark:#F97583"> ON</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> test(a, b, c);</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 排序逻辑：先按 a 排，a 相同再按 b 排，b 相同再按 c 排</span></span></code></pre>
+<p><strong>最左前缀原则</strong>：查询条件必须从索引最左列（a）开始，且中间不能跳过，才能利用索引。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅ 走索引</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> test </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;                    </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 用到 a</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> test </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;         </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 用到 a, b</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> test </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> c </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 用到 a, b, c</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> test </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> c </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;         </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 只用到 a（跳过 b，c 用不到）</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ❌ 不走索引</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> test </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;                   </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 没有 a，无从查起</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> test </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> c </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;         </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 同上</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> test </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> c </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;                    </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 同上</span></span></code></pre>
+<p>一句话记住：没有最左边那一列，后面的列就像断了线的珠子——散了。</p>
+<p><img src="/blog/mysql-2-index/mysql-2-index-03.png" alt="联合索引最左前缀"></p>
+<h3 id="42-索引下推mysql-56">4.2 索引下推（MySQL 5.6+）</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 联合索引 idx_name_age(name, age)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> name</span><span style="color:#D73A49;--shiki-dark:#F97583"> LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '张%'</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> age </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 25</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<ul>
+<li><strong>没有索引下推</strong>：先找出所有 <code>name LIKE '张%'</code> 的主键 → 全部回表 → 再在 Server 层筛掉 <code>age != 25</code> 的行；</li>
+<li><strong>有索引下推</strong>：找到 <code>name LIKE '张%'</code> 后，直接在索引中判断 <code>age = 25</code>，只对满足条件的行回表。</li>
+</ul>
+<p>相当于把 WHERE 条件的过滤工作”下推”到存储引擎层，减少不必要的回表。对应 <code>EXPLAIN</code> Extra 中的 <code>Using index condition</code>。</p>
+<h2 id="五explainsql-优化的显微镜">五、EXPLAIN：SQL 优化的显微镜</h2>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">EXPLAIN </span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="color:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> create_time </span><span style="color:#D73A49;--shiki-dark:#F97583">DESC</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>EXPLAIN 是最常用的 SQL 分析工具，重点看 type、Extra、key、rows 几个字段。</p>
+<h3 id="51-type访问类型最重要">5.1 type：访问类型（最重要）</h3>
+<p>从优到差排列：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>system    → 表只有一行（系统表）</span></span>
+<span class="line"><span>const     → 主键或唯一索引等值查询，最多一行        ✅ 优秀</span></span>
+<span class="line"><span>eq_ref    → JOIN 时用主键或唯一索引关联            ✅ 优秀</span></span>
+<span class="line"><span>ref       → 普通索引等值查询                      ✅ 良好</span></span>
+<span class="line"><span>range     → 索引范围扫描（>、&#x3C;、BETWEEN、IN）      ⚠️ 还行</span></span>
+<span class="line"><span>index     → 全索引扫描（扫描整个索引树）           ❌ 较差</span></span>
+<span class="line"><span>ALL       → 全表扫描                              ❌ 最差</span></span></code></pre>
+<p>实际开发标准：至少达到 <strong>range</strong> 级别；看到 <code>type=ALL</code> 就是全表硬扫，必须优化。</p>
+<h3 id="52-extra额外信息">5.2 Extra：额外信息</h3>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>含义</th>
+<th>级别</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Using index</code></td>
+<td>覆盖索引，不回表</td>
+<td>🟢 最优</td>
+</tr>
+<tr>
+<td><code>Using where</code></td>
+<td>Server 层做过滤</td>
+<td>🟡 正常</td>
+</tr>
+<tr>
+<td><code>Using index condition</code></td>
+<td>索引下推生效</td>
+<td>🟢 好</td>
+</tr>
+<tr>
+<td><code>Using filesort</code></td>
+<td>需要额外排序</td>
+<td>🔴 需要优化</td>
+</tr>
+<tr>
+<td><code>Using temporary</code></td>
+<td>用了临时表</td>
+<td>🔴 严重问题</td>
+</tr>
+</tbody>
+</table>
+<h3 id="53-key-和-rows">5.3 key 和 rows</h3>
+<ul>
+<li><strong>key</strong>：实际使用的索引名；为 <code>NULL</code> 说明索引没生效；</li>
+<li><strong>rows</strong>：优化器预估要扫描的行数，越小越好，是判断优化效果的直观指标。</li>
+</ul>
+<h2 id="六sql-优化实战">六、SQL 优化实战</h2>
+<h3 id="61-深分页延迟关联">6.1 深分页：延迟关联</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ❌ 深分页问题：扫描前 100010 行，再扔掉前 100000 行</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">10</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>MySQL 不知道第 100000 行在哪，只能从第 1 行开始数。推荐<strong>延迟关联</strong>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅ 先在索引中定位主键，再用主键关联取全量数据</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> o.</span><span style="color:#D73A49;--shiki-dark:#F97583">*</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders o</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">INNER JOIN</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">10</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) t</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  ON</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">id</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> t</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>子查询只扫 <code>id</code> 索引（覆盖索引、不回表），定位到 10 个主键后再关联获取完整数据。</p>
+<h3 id="62-join-优化小表驱动大表">6.2 JOIN 优化：小表驱动大表</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ❌ 关联字段没索引 → 被驱动表每次都要全表扫描</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user u</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders o </span><span style="color:#D73A49;--shiki-dark:#F97583">ON</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> u</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">id</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">user_id</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> u</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">name</span><span style="color:#D73A49;--shiki-dark:#F97583"> LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '%张%'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅ 优化方式</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 1. orders.user_id 上建索引（被驱动表的关联列必须有索引）</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 2. user 表先执行 WHERE 过滤，用小结果集驱动大表</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 3. 去掉前缀模糊 '%张'，改成 '张%'，让 user.name 索引生效</span></span></code></pre>
+<p>核心原则：JOIN 时优化器会自动选小表作驱动表，但<strong>被驱动表的 JOIN 列上必须有索引</strong>，否则每次关联都是一次全表扫描。</p>
+<h3 id="63-order-by-优化利用索引排序">6.3 ORDER BY 优化：利用索引排序</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ❌ Extra 出现 Using filesort（需要额外排序，消耗大）</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> status</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> create_time </span><span style="color:#D73A49;--shiki-dark:#F97583">DESC</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅ 建联合索引，让 WHERE 和 ORDER BY 共用一个索引</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="color:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> idx_status_ctime</span><span style="color:#D73A49;--shiki-dark:#F97583"> ON</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders(</span><span style="color:#D73A49;--shiki-dark:#F97583">status</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, create_time);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> status</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> create_time </span><span style="color:#D73A49;--shiki-dark:#F97583">DESC</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>索引本身就按 <code>(status, create_time)</code> 排序，命中后不需要额外排序。</p>
+<h3 id="64-建索引的六要六不要">6.4 建索引的六要六不要</h3>
+<p><strong>六要</strong>：</p>
+<ol>
+<li>WHERE、JOIN、ORDER BY 的列要建索引；</li>
+<li>区分度高的列要建索引（手机号、邮箱等）；</li>
+<li>优先建覆盖索引，减少回表；</li>
+<li>字符串字段考虑前缀索引，如 <code>idx(title(20))</code>；</li>
+<li>联合索引把区分度高的列放左边；</li>
+<li>频繁查询的列优先考虑。</li>
+</ol>
+<p><strong>六不要</strong>：</p>
+<ol>
+<li>不在大字段上建索引（TEXT、BLOB）；</li>
+<li>不在低区分度列建索引（如性别只有男女）；</li>
+<li>不在索引列上做函数/表达式运算；</li>
+<li>不使用 <code>%</code> 开头的模糊匹配；</li>
+<li>不建过多索引（单表建议不超过 5 个）；</li>
+<li>不忽略最左前缀原则。</li>
+</ol>
+<h3 id="65-count-优化">6.5 COUNT 优化</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- InnoDB 下 COUNT(*) 和 COUNT(1) 效率相同，优化器会改写</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- COUNT(col) 只统计 col 非 NULL 的行，可能比 COUNT(*) 慢</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅ 需要粗略值时</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> TABLE_ROWS</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> information_schema</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">TABLES</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> TABLE_SCHEMA </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'mydb'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> TABLE_NAME </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'orders'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅ 需要精确值时：用汇总表 + 定时任务维护</span></span></code></pre>
+<h2 id="七小结">七、小结</h2>
+<p>学完本篇，应能回答：B+Tree 长什么样、为什么 MySQL 选它；聚簇索引与二级索引的本质区别；什么是回表、覆盖索引如何避免；最左前缀原则与索引下推解决了什么问题；EXPLAIN 的 type 和 Extra 怎么看；深分页、JOIN、ORDER BY 如何优化。</p>
+<p>三句最关键的认知：</p>
+<ol>
+<li><strong>索引是有序数据结构</strong>：用极矮的 B+Tree 把磁盘 I/O 压到个位数，范围查询靠叶子链表；</li>
+<li><strong>回表是额外一次主键查找</strong>：覆盖索引让所需列都落在索引里，<code>Using index</code> 是命中标志；</li>
+<li><strong>联合索引遵守最左前缀</strong>：从最左列连续使用，跳过的列用不到；EXPLAIN 里 <code>type=ALL</code>、<code>Using filesort</code>、<code>Using temporary</code> 是明确的优化信号。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳；事务、锁与 MVCC 在下一篇展开。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/mysql-2-index/">https://zhanzhenguan.github.io/blog/mysql-2-index/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-7-slow-sql/">慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写</a> <p>梳理慢 SQL 全流程优化：慢的阈值标准（用户接口 200ms、报表 5s、批量 30s）；慢查询日志开启参数、mysqldumpslow 汇总、SHOW PROCESSLIST 与 Druid/Arthas/pt-query-digest 工具；EXPLAIN 的 type/rows/Extra 判读；联合索引最左前缀与建索引口诀；六大索引失效场景（函数操作、隐式类型转换、左模糊、OR 非索引列、违反最左前缀、范围右边列失效）；SELECT *、深分页游标、WHERE 函数运算、IN/EXISTS/JOIN 改写；MyBatis N+1、超大 IN、动态 SQL 左模糊；三个实战优化案例与按 ROI 排序的优化优先级、排查清单。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-1-basics/">MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</a> <p>整理 Java 开发视角的 MySQL 基础认知：知识体系图谱、Server 层与存储引擎层分层架构、一条 SELECT 的连接器/分析器/优化器/执行器流程、MySQL 8.0 移除查询缓存、UPDATE 涉及的 Buffer Pool 与 undo/redo/binlog 日志链路、InnoDB 与 MyISAM 在事务/行锁/外键/崩溃恢复/MVCC/聚簇索引/COUNT(*) 上的差异，以及生产环境为何默认选 InnoDB。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-3-tx-mvcc/">深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC</a> <p>整理 MySQL 事务、锁与 MVCC 核心：事务定义与 Spring @Transactional；ACID 分别由 undo log、redo log、MVCC+锁等机制保证；脏读/不可重复读/幻读三种并发问题与四种隔离级别；行锁 S/X 兼容矩阵、记录锁/间隙锁/临键锁、死锁成因与三条避免法则；MVCC 多版本并发控制、隐藏事务 ID 与回滚指针、undo log 版本链、ReadView 可见性判断规则；RC 与 RR 的本质区别即 ReadView 生成时机。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/mysql-1-basics/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</div> </a> <a class="next" href="/blog/mysql-3-tx-mvcc/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀","description":"整理 MySQL 索引原理与优化：索引作为有序数据结构减少磁盘 I/O；B+Tree 非叶子节点只存键、叶子节点双向链表相连的结构与四个核心优势、千万级表 2-3 层树高的 I/O 估算；聚簇索引叶子存整行、二级索引叶子存主键值；回表与覆盖索引；联合索引最左前缀原则与索引下推（MySQL 5.6+）；EXPLAIN 的 type/Extra/key/rows 判读；深分页延迟关联、JOIN 小表驱动大表、ORDER BY 索引排序、建索引六要六不要与 COUNT 优化。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/mysql-2-index/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

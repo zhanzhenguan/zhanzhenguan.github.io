@@ -1,0 +1,386 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理"><meta property="og:description" content="整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-cors/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 8 分钟</span> <span>· 2508 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/cors/">#CORS</a><a class="tag" href="/tags/1c3afb0c/">#跨域</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li class="current">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理（本文）</li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第二十二部分，梳理实际项目中常见的跨域问题：为什么浏览器会拦、后端有哪几种配置方式、预检请求和跨域 Cookie 怎么处理、出问题按什么顺序排查。代码为通用示例，允许来源按实际前端域名配置。</p>
+<h2 id="一跨域问题的原因">一、跨域问题的原因</h2>
+<p>浏览器出于安全考虑，会受到同源策略（Same-Origin Policy）的限制。当请求的 <strong>协议、域名、端口</strong> 任意一项不同时，就属于跨域请求。</p>
+<table>
+<thead>
+<tr>
+<th>地址</th>
+<th>是否跨域</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>http://localhost:8080</code> → <code>http://localhost:8080</code></td>
+<td>否</td>
+<td>完全相同</td>
+</tr>
+<tr>
+<td><code>http://localhost:8080</code> → <code>http://localhost:8081</code></td>
+<td>是</td>
+<td>端口不同</td>
+</tr>
+<tr>
+<td><code>http://localhost:8080</code> → <code>https://localhost:8080</code></td>
+<td>是</td>
+<td>协议不同</td>
+</tr>
+<tr>
+<td><code>http://localhost:8080</code> → <code>http://127.0.0.1:8080</code></td>
+<td>是</td>
+<td>主机名不同</td>
+</tr>
+<tr>
+<td><code>http://localhost:8080</code> → <code>http://www.example.com</code></td>
+<td>是</td>
+<td>域名不同</td>
+</tr>
+</tbody>
+</table>
+<p>跨域限制主要由浏览器执行，并不是服务器之间不能互相请求。当后端没有返回浏览器认可的 CORS（Cross-Origin Resource Sharing，跨源资源共享）响应头时，浏览器可能阻止前端 JavaScript 读取响应。</p>
+<p>注意：跨域并不意味着请求一定没有到达服务器。部分请求可能已经被服务器处理，只是浏览器不允许前端读取响应。</p>
+<p><img src="/blog/spring-boot-cors/spring-boot-cors-01.png" alt="同源策略与跨域判定"></p>
+<h2 id="二方法一使用-crossorigin-注解局部配置">二、方法一：使用 <code>@CrossOrigin</code> 注解（局部配置）</h2>
+<p>适合只允许某个 Controller 或接口跨域的情况。</p>
+<h3 id="21-controller-级别">2.1 Controller 级别</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RestController</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequestMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/users"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">CrossOrigin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">origins</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "http://localhost:3000"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> UserController</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    // ...</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>此配置允许来自 <code>http://localhost:3000</code> 的请求访问该 Controller。也可以标在单个方法上做方法级别配置。</p>
+<h3 id="22-常用属性">2.2 常用属性</h3>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>origins</code></td>
+<td>允许访问的来源，例如 <code>http://localhost:3000</code></td>
+</tr>
+<tr>
+<td><code>methods</code></td>
+<td>允许的 HTTP 方法</td>
+</tr>
+<tr>
+<td><code>allowedHeaders</code></td>
+<td>允许前端请求携带的请求头</td>
+</tr>
+<tr>
+<td><code>exposedHeaders</code></td>
+<td>允许前端 JavaScript 读取的响应头</td>
+</tr>
+<tr>
+<td><code>allowCredentials</code></td>
+<td>是否允许携带 Cookie 等凭证</td>
+</tr>
+<tr>
+<td><code>maxAge</code></td>
+<td>预检请求结果缓存时间，单位秒</td>
+</tr>
+</tbody>
+</table>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">CrossOrigin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        origins</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "http://localhost:3000"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        methods</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {RequestMethod.GET, RequestMethod.POST},</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        allowedHeaders</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "*"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        exposedHeaders</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "Authorization"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        allowCredentials</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "true"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        maxAge</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3600</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+<p>如果需要携带 Cookie，必须指定明确的来源，不能使用 <code>origins = "*"</code>。</p>
+<h2 id="三方法二使用-webmvcconfigurer-全局配置推荐常见-mvc-项目">三、方法二：使用 <code>WebMvcConfigurer</code> 全局配置（推荐常见 MVC 项目）</h2>
+<p>适合统一配置整个 Spring MVC 应用的跨域规则。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> CorsConfig</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> WebMvcConfigurer</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> addCorsMappings</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(CorsRegistry </span><span style="color:#E36209;--shiki-dark:#FFAB70">registry</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        registry.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">addMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/**"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">allowedOrigins</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"http://localhost:3000"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"http://localhost:5173"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">allowedMethods</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"GET"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"POST"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"PUT"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"DELETE"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"OPTIONS"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">allowedHeaders</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"*"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">exposedHeaders</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Authorization"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">allowCredentials</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">maxAge</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">3600</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>配置说明：</p>
+<ul>
+<li><code>addMapping("/**")</code>：配置所有接口路径；</li>
+<li><code>allowedOrigins(...)</code>：指定允许的前端来源；</li>
+<li><code>allowedMethods(...)</code>：指定允许的请求方法；</li>
+<li><code>allowedHeaders("*")</code>：允许请求携带的请求头；</li>
+<li><code>exposedHeaders(...)</code>：让前端能够读取指定响应头，例如 <code>Authorization</code>；</li>
+<li><code>allowCredentials(true)</code>：允许浏览器请求携带凭证；</li>
+<li><code>maxAge(3600)</code>：浏览器缓存预检结果 3600 秒。</li>
+</ul>
+<p>生产环境建议配置明确的域名，不要无条件允许所有来源。</p>
+<h2 id="四方法三使用-spring-security-配置跨域spring-boot-3x">四、方法三：使用 Spring Security 配置跨域（Spring Boot 3.x）</h2>
+<p>如果项目集成了 Spring Security，建议通过 Spring Security 的 CORS 支持配置，并确保 CORS 在认证授权处理之前生效。</p>
+<h3 id="41-配置-cors-来源">4.1 配置 CORS 来源</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> CorsConfigurationSource </span><span style="color:#6F42C1;--shiki-dark:#B392F0">corsConfigurationSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    CorsConfiguration config </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> CorsConfiguration</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    config.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setAllowedOrigins</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(List.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"http://localhost:3000"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    config.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setAllowedMethods</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(List.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"GET"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"POST"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"PUT"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"DELETE"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"OPTIONS"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    config.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setAllowedHeaders</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(List.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"*"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    config.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setAllowCredentials</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    UrlBasedCorsConfigurationSource source </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> UrlBasedCorsConfigurationSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    source.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">registerCorsConfiguration</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/**"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, config);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> source;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="42-security-配置启用-cors">4.2 Security 配置启用 CORS</h3>
+<p>Spring Boot 3.x 通常使用 Spring Security 6.x，采用 <code>SecurityFilterChain</code> 配置方式：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SecurityFilterChain </span><span style="color:#6F42C1;--shiki-dark:#B392F0">securityFilterChain</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(HttpSecurity http) throws Exception {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    http</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cors</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(cors </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> cors.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">configurationSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">corsConfigurationSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()))</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">authorizeHttpRequests</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(auth </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> auth.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">anyRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">authenticated</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>http.cors()</code> 会使用容器中提供的 <code>CorsConfigurationSource</code> 等 CORS 配置。</p>
+<p>注意：跨域配置与认证授权是不同问题。CORS 配置正确后，接口仍可能返回 401 或 403，这通常是认证、授权或 CSRF 相关问题，不应直接认定为跨域配置失败。旧版 Spring Security（例如 5.x）的 <code>WebSecurityConfigurerAdapter</code> 在较新版本中已被弃用并移除，建议使用 <code>SecurityFilterChain</code>。</p>
+<h2 id="五方法四使用-filter-手动设置跨域响应头">五、方法四：使用 Filter 手动设置跨域响应头</h2>
+<p>适用于需要在 Servlet Filter 层处理跨域的场景。但普通 Spring MVC 项目通常优先采用 <code>WebMvcConfigurer</code> 或 Spring Security 的 CORS 支持，避免重复配置。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Component</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> CorsFilter</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Filter</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> doFilter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(ServletRequest </span><span style="color:#E36209;--shiki-dark:#FFAB70">req</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, ServletResponse </span><span style="color:#E36209;--shiki-dark:#FFAB70">res</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, FilterChain </span><span style="color:#E36209;--shiki-dark:#FFAB70">chain</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            throws</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> IOException, ServletException {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        HttpServletRequest request </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (HttpServletRequest) req;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        HttpServletResponse response </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (HttpServletResponse) res;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String origin </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> request.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getHeader</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Origin"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#6F42C1;--shiki-dark:#B392F0">isAllowedOrigin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(origin)) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            response.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHeader</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Access-Control-Allow-Origin"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, origin);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            response.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHeader</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Access-Control-Allow-Methods"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"GET,POST,PUT,DELETE,OPTIONS"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            response.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHeader</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Access-Control-Allow-Headers"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"*"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            response.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHeader</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Access-Control-Allow-Credentials"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"true"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        chain.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">doFilter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(req, res);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> boolean</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> isAllowedOrigin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">origin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // 白名单匹配，不要直接回显任意 Origin</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> origin </span><span style="color:#D73A49;--shiki-dark:#F97583">!=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> null</span><span style="color:#D73A49;--shiki-dark:#F97583"> &#x26;&#x26;</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (origin.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">equals</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"http://localhost:3000"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>Filter 注意事项：</p>
+<ol>
+<li>允许来源应通过白名单判断，不能直接把任意 <code>Origin</code> 回显给客户端；</li>
+<li>如果允许凭证，不能将 <code>Access-Control-Allow-Origin</code> 设置为 <code>*</code>；</li>
+<li>不要同时在 Filter、MVC、Security、Nginx 中重复添加冲突的 CORS 响应头；</li>
+<li>Spring Boot 3.x 使用 <code>jakarta.servlet</code>；Spring Boot 2.x 通常使用 <code>javax.servlet</code>，代码包名需要对应版本调整；</li>
+<li>如果 Filter 在 Spring Security 之后执行，预检请求可能先被认证机制拒绝，需要调整 CORS 处理顺序或使用 Security 原生 CORS 配置。</li>
+</ol>
+<h2 id="六预检请求options">六、预检请求（OPTIONS）</h2>
+<p>浏览器对部分跨域请求会先发送 OPTIONS 请求，询问服务器是否允许后续请求。常见触发情况：</p>
+<ul>
+<li>使用 <code>PUT</code>、<code>DELETE</code> 等非简单请求方法；</li>
+<li>请求携带 <code>Authorization</code> 等自定义请求头；</li>
+<li>使用 <code>Content-Type: application/json</code> 等不属于简单请求允许范围的内容类型。</li>
+</ul>
+<p>预检请求通常会携带：<code>Origin</code>、<code>Access-Control-Request-Method</code>、<code>Access-Control-Request-Headers</code>。服务器应返回符合要求的 CORS 响应头；如果预检请求失败，浏览器通常不会继续发送实际请求。</p>
+<p><img src="/blog/spring-boot-cors/spring-boot-cors-03.png" alt="预检请求流程"></p>
+<h2 id="七cookie-与跨域请求">七、Cookie 与跨域请求</h2>
+<p>如果前后端跨域且需要使用 Cookie，需要前后端共同配置。</p>
+<h3 id="71-后端">7.1 后端</h3>
+<p>后端允许凭证：<code>Access-Control-Allow-Credentials: true</code>，且 <code>Access-Control-Allow-Origin</code> 返回明确来源，不能为 <code>*</code>。</p>
+<h3 id="72-前端fetch">7.2 前端（Fetch）</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="js"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">fetch</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/users"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  credentials: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"include"</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">})</span></span></code></pre>
+<h3 id="73-前端axios">7.3 前端（Axios）</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="js"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">axios.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">get</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/users"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, { withCredentials: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> })</span></span></code></pre>
+<p>注意事项：</p>
+<ul>
+<li><code>Access-Control-Allow-Origin</code> 不能为 <code>*</code>，必须返回明确来源；</li>
+<li><code>Access-Control-Allow-Credentials</code> 必须为 <code>true</code>；</li>
+<li>Cookie 的 <code>SameSite</code>、<code>Secure</code>、域名和路径属性也可能影响是否发送；</li>
+<li>跨站 Cookie 通常需要 <code>SameSite=None; Secure</code>，而 <code>Secure</code> 一般要求 HTTPS；</li>
+<li>CORS 允许访问不等于 Cookie 一定会发送，Cookie 策略仍然独立生效。</li>
+</ul>
+<h2 id="八生产环境-nginx-配置">八、生产环境 Nginx 配置</h2>
+<p>如果请求经过 Nginx，Nginx 也可能处理或覆盖 CORS 响应头。应先确定由后端还是 Nginx 统一处理，避免双方重复添加响应头。</p>
+<p>说明：</p>
+<ul>
+<li><code>always</code>：让指定响应头在更多响应状态下也添加，便于处理错误响应；</li>
+<li>如果需要支持多个来源，应使用经过校验的白名单映射，不能将任意来源直接回显；</li>
+<li>Nginx 配置语法及 <code>if</code> 的使用需结合实际配置结构验证；</li>
+<li>如果后端已经配置 CORS，建议不要再由 Nginx 重复设置相同响应头。</li>
+</ul>
+<h2 id="九跨域问题排查步骤">九、跨域问题排查步骤</h2>
+<h3 id="91-检查浏览器控制台">9.1 检查浏览器控制台</h3>
+<p>打开浏览器开发者工具（F12），查看 Console 和 Network：请求的实际 URL、协议、域名、端口是否正确；是否出现 CORS 错误；是否存在 OPTIONS 预检请求；OPTIONS 返回状态码和响应头是否符合预期；实际请求是否发出，以及返回 401、403、404、500 等状态码。</p>
+<h3 id="92-检查响应头">9.2 检查响应头</h3>
+<table>
+<thead>
+<tr>
+<th>响应头</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Access-Control-Allow-Origin</code></td>
+<td>允许的请求来源</td>
+</tr>
+<tr>
+<td><code>Access-Control-Allow-Methods</code></td>
+<td>允许的请求方法</td>
+</tr>
+<tr>
+<td><code>Access-Control-Allow-Headers</code></td>
+<td>允许的请求头</td>
+</tr>
+<tr>
+<td><code>Access-Control-Allow-Credentials</code></td>
+<td>是否允许凭证</td>
+</tr>
+<tr>
+<td><code>Access-Control-Expose-Headers</code></td>
+<td>前端可读取的响应头</td>
+</tr>
+<tr>
+<td><code>Access-Control-Max-Age</code></td>
+<td>预检结果缓存时间</td>
+</tr>
+</tbody>
+</table>
+<h3 id="93-使用-curl-模拟请求">9.3 使用 curl 模拟请求</h3>
+<p>普通跨域请求与模拟预检请求都可以用 curl 复现。curl 不会像浏览器一样执行 CORS 限制，但可以帮助检查服务器是否返回正确响应头：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 模拟预检请求</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -i</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -X</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> OPTIONS</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> http://localhost:8080/api/users</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  -H</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "Origin: http://localhost:3000"</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">  -H</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "Access-Control-Request-Method: GET"</span></span></code></pre>
+<h3 id="94-检查中间件与代理">9.4 检查中间件与代理</h3>
+<p>如果部署链路为「前端 → Nginx / 网关 → 后端」，需要逐层检查：Nginx 是否添加、覆盖或移除 CORS 响应头；API 网关是否有统一跨域策略；Spring Security 是否在 CORS 处理前拒绝 OPTIONS 请求；是否有多个组件重复添加 <code>Access-Control-Allow-Origin</code>，导致响应头重复或值不合法；错误响应（例如 401、403、500）是否缺少 CORS 响应头。</p>
+<h3 id="95-检查前端请求配置">9.5 检查前端请求配置</h3>
+<p>如果使用 Cookie：Fetch 是否配置 <code>credentials: "include"</code>；Axios 是否配置 <code>withCredentials: true</code>；Cookie 是否因 <code>SameSite</code>、<code>Secure</code>、域名或路径限制而未发送。如果使用 JWT：前端是否在请求头中携带 <code>Authorization</code>；后端 <code>allowedHeaders</code> 是否允许 <code>Authorization</code>；是否正确处理 OPTIONS 预检请求。</p>
+<h2 id="十常见错误及解决方案">十、常见错误及解决方案</h2>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>可能原因</th>
+<th>解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>No 'Access-Control-Allow-Origin' header</code></td>
+<td>服务端没有返回允许来源响应头</td>
+<td>检查 CORS 配置是否生效</td>
+</tr>
+<tr>
+<td>允许 Cookie 却使用 <code>*</code></td>
+<td>浏览器不允许凭证模式下使用通配来源</td>
+<td>配置具体 Origin</td>
+</tr>
+<tr>
+<td>OPTIONS 返回 401/403</td>
+<td>Security、网关或 Filter 拦截预检请求</td>
+<td>确保 CORS 先处理，并正确允许 OPTIONS</td>
+</tr>
+<tr>
+<td>请求头 <code>Authorization</code> 被拒绝</td>
+<td>未允许该请求头</td>
+<td>在 <code>allowedHeaders</code> 中允许</td>
+</tr>
+<tr>
+<td>前端读取不到响应中的自定义头</td>
+<td>未暴露响应头</td>
+<td>配置 <code>exposedHeaders</code></td>
+</tr>
+<tr>
+<td>配置了跨域但仍报错</td>
+<td>Nginx、网关、Security 等层存在冲突</td>
+<td>按请求链路逐层排查</td>
+</tr>
+<tr>
+<td>Cookie 没有发送</td>
+<td>前端凭证配置或 Cookie 属性不符合要求</td>
+<td>检查 credentials、SameSite、Secure 等</td>
+</tr>
+<tr>
+<td>响应头出现多个 <code>Access-Control-Allow-Origin</code></td>
+<td>多层重复配置</td>
+<td>统一由一个层级负责 CORS</td>
+</tr>
+</tbody>
+</table>
+<h2 id="十一安全注意事项">十一、安全注意事项</h2>
+<ol>
+<li><strong>生产环境不要无条件使用 <code>allowedOrigins("*")</code></strong>，只允许可信前端来源。</li>
+<li>如果启用 <code>allowCredentials(true)</code>，必须使用明确的来源，不能使用通配符来源。</li>
+<li>CORS 不是身份认证和授权机制，不能替代登录验证、权限控制。</li>
+<li>CORS 不能防止所有 CSRF 攻击。使用 Cookie 认证时，仍应根据业务安全要求配置 CSRF 防护。</li>
+<li><code>allowedHeaders("*")</code>、允许所有方法等宽松设置，应根据项目实际需求收敛。</li>
+<li>如果允许动态 Origin，必须先进行严格白名单匹配，不能直接信任请求中的 <code>Origin</code>。</li>
+<li>生产环境尽量使用 HTTPS。</li>
+</ol>
+<h2 id="十二推荐配置方案">十二、推荐配置方案</h2>
+<p><img src="/blog/spring-boot-cors/spring-boot-cors-02.png" alt="跨域配置层级与单一负责原则"></p>
+<table>
+<thead>
+<tr>
+<th>项目情况</th>
+<th>推荐方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>少量接口跨域</td>
+<td><code>@CrossOrigin</code></td>
+</tr>
+<tr>
+<td>普通 Spring MVC 项目</td>
+<td><code>WebMvcConfigurer</code> 全局配置</td>
+</tr>
+<tr>
+<td>Spring Security 项目</td>
+<td><code>CorsConfigurationSource</code> + <code>http.cors()</code></td>
+</tr>
+<tr>
+<td>需要特殊 Servlet 处理</td>
+<td>自定义 Filter（避免重复配置）</td>
+</tr>
+<tr>
+<td>由网关统一管理</td>
+<td>在 API 网关统一配置 CORS</td>
+</tr>
+<tr>
+<td>Nginx 直接代理前后端</td>
+<td>可由 Nginx 统一处理，但需避免后端重复添加</td>
+</tr>
+</tbody>
+</table>
+<p><strong>建议</strong>：一个项目尽量由一个明确的层级统一负责 CORS。先确认请求链路，再配置对应层级；不要同时在 Controller、MVC、Filter、Security、Nginx 中随意叠加跨域配置。</p>
+<h2 id="十三小结">十三、小结</h2>
+<p>跨域问题本质是浏览器同源策略，不是服务端不通；排查先分清「请求没到」「响应头不对」「被认证拦截」「Cookie 没发」四类情况。三个最容易复盘的点：</p>
+<ol>
+<li><strong>配置层级单一负责</strong>：MVC 项目优先 <code>WebMvcConfigurer</code>，Security 项目用 <code>CorsConfigurationSource</code>，避免多层叠加出重复响应头；</li>
+<li><strong>凭证与通配符互斥</strong>：允许 Cookie / 凭证时，来源必须明确，不能用 <code>*</code>；</li>
+<li><strong>预检先放行</strong>：OPTIONS 被 401/403 拦截时，先检查 CORS 处理顺序与 Security 过滤链，不要当成跨域配置本身写错。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，代码片段为通用示例；涉及真实项目配置时请按实际环境与安全策略调整。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-cors/">https://zhanzhenguan.github.io/blog/spring-boot-cors/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a> <p>整理 Spring Boot 数据访问基础：Spring Data 概念、H2 内存数据库依赖与配置、schema.sql/data.sql 初始化、H2 Web 控制台；Druid 数据源切换、核心配置项、监控面板、starter 自动配置，以及动态数据源切换原理。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-admin/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</div> </a> <a class="next" href="/blog/spring-boot-data/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理","description":"整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-cors/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

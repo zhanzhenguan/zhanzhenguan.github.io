@@ -1,0 +1,531 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 3 接入 Prometheus 监控闭环的要点：Actuator/Micrometer/registry-prometheus 三者分工、版本基线、业务与管理端口分离、端点白名单与全局标签、Counter/Timer/Gauge 选型与埋点、Micrometer 注册名到 Prometheus 序列名转换、Prometheus 抓取任务配置与生效方式、Targets 入库验证、常用 PromQL、Grafana 数据源与面板、告警规则与 Alertmanager、生产上线清单（端口隔离/认证抓取/标签基数/数据保留）与常见问题排查。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板"><meta property="og:description" content="整理 Spring Boot 3 接入 Prometheus 监控闭环的要点：Actuator/Micrometer/registry-prometheus 三者分工、版本基线、业务与管理端口分离、端点白名单与全局标签、Counter/Timer/Gauge 选型与埋点、Micrometer 注册名到 Prometheus 序列名转换、Prometheus 抓取任务配置与生效方式、Targets 入库验证、常用 PromQL、Grafana 数据源与面板、告警规则与 Alertmanager、生产上线清单（端口隔离/认证抓取/标签基数/数据保留）与常见问题排查。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-prometheus/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 10 分钟</span> <span>· 3068 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/prometheus/">#Prometheus</a><a class="tag" href="/tags/9aff6241/">#监控</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li class="current">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板（本文）</li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第二十五部分，从 Actuator 指标暴露，到 Prometheus 定时抓取，再到 Grafana 可视化，打通应用监控闭环。技术基线：JDK 17、Spring Boot 3.5.16、Micrometer、Prometheus 3.16.0、Grafana 13.3.1。代码为通用示例，地址与端口按实际环境调整。</p>
+<h2 id="一目标一套完整的指标监控闭环">一、目标：一套完整的指标监控闭环</h2>
+<p>很多项目的监控止步于「引入了 actuator 依赖」，以为这就是接入了 Prometheus。实际差一步关键动作：<strong>把指标以 Prometheus 认识的格式暴露出来，并让 Prometheus 来抓</strong>。</p>
+<p>完成后会得到：</p>
+<ul>
+<li>一个业务流量与监控端点分离的 Spring Boot 应用（业务 8080 / 管理 8081）；</li>
+<li>JVM、HTTP 请求、进程存活等自动指标，加上订单数、下单耗时、活跃任务数三个自定义业务指标；</li>
+<li>Prometheus 每 15 秒抓取一次应用指标并写入本地时序数据库；</li>
+<li>Grafana 连接 Prometheus，用 PromQL 查询并展示图表。</li>
+</ul>
+<p><img src="/blog/spring-boot-prometheus/spring-boot-prometheus-01.png" alt="监控闭环数据流"></p>
+<h2 id="二版本基线">二、版本基线</h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>版本</th>
+<th>为什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JDK</td>
+<td>17</td>
+<td>LTS，Spring Boot 3.x 的最低要求线</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>3.5.16</td>
+<td>3.5.x 线最终 OSS 版本，Web + Actuator 由 parent 统一管版本</td>
+</tr>
+<tr>
+<td>micrometer-registry-prometheus</td>
+<td>由 Boot BOM 托管</td>
+<td>不要手写版本号，Boot 3.5.16 锁定 Micrometer 1.15 系</td>
+</tr>
+<tr>
+<td>Prometheus</td>
+<td>3.16.0</td>
+<td>本机运行，<code>/api/v1/status/buildinfo</code> 实测确认</td>
+</tr>
+<tr>
+<td>Grafana</td>
+<td>13.3.1</td>
+<td>本机运行，<code>/api/health</code> 实测确认</td>
+</tr>
+</tbody>
+</table>
+<p>一个容易忽视的事实：<strong>Actuator ≠ 监控接入</strong>。Actuator 只提供端点壳子；Micrometer 负责记录指标；<code>micrometer-registry-prometheus</code> 负责把指标翻译成 Prometheus 文本格式。三者缺一，<code>/actuator/prometheus</code> 就不会出现或没有内容。</p>
+<h2 id="三创建工程与依赖">三、创建工程与依赖</h2>
+<p>依赖只有三个：web、actuator、prometheus registry，都不写版本号，交给 parent：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-web&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-actuator&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>io.micrometer&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>micrometer-registry-prometheus&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h2 id="四核心配置业务端口与管理端口分离">四、核心配置：业务端口与管理端口分离</h2>
+<h3 id="41-applicationyml">4.1 application.yml</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">server</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  port</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">8080</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">management</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  server</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    port</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">8081</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  endpoints</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    web</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      exposure</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        include</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">health,info,prometheus,metrics</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  endpoint</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    health</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      show-details</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">never</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  metrics</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    tags</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      application</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">prometheus-demo</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  observations</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    http</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      server</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        percentiles-histogram</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  app</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">prometheus-demo</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">1.0.0</span></span></code></pre>
+<h3 id="42-关键配置逐项说明">4.2 关键配置逐项说明</h3>
+<table>
+<thead>
+<tr>
+<th>配置项</th>
+<th>作用</th>
+<th>本机实测效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>management.server.port: 8081</code></td>
+<td>管理端点独立端口</td>
+<td>8080 上访问 <code>/actuator/health</code> 返回 404，端口隔离生效</td>
+</tr>
+<tr>
+<td><code>exposure.include</code></td>
+<td>只暴露这 4 个端点</td>
+<td>8081 上访问 <code>/actuator/env</code> 返回 404</td>
+</tr>
+<tr>
+<td><code>metrics.tags.application</code></td>
+<td>全局公共标签</td>
+<td>所有指标带 <code>application="prometheus-demo"</code></td>
+</tr>
+<tr>
+<td><code>percentiles-histogram.http.server.requests</code></td>
+<td>HTTP 请求直方图</td>
+<td>出现 <code>http_server_requests_seconds_bucket</code> 序列</td>
+</tr>
+<tr>
+<td><code>show-details: never</code></td>
+<td>健康详情不展示</td>
+<td>health 只返回总体状态</td>
+</tr>
+</tbody>
+</table>
+<p>端口分离是生产标配：业务口对外服务，管理口只对监控网络开放。如果两个口共用 8080，就得在安全策略上对业务流量和抓取流量做区分，麻烦且容易出漏洞。</p>
+<p><img src="/blog/spring-boot-prometheus/spring-boot-prometheus-02.png" alt="业务/管理双端口隔离"></p>
+<h3 id="43-坑info-端点默认为空">4.3 坑：info 端点默认为空</h3>
+<p>第一轮验证发现 <code>/actuator/info</code> 返回 <code>{}</code>，<code>info.app.*</code> 配置一个都没出来。根因：Boot 3.5 里 env 型 info 贡献者的条件注解是 <code>@ConditionalOnEnabledInfoContributor(value = "env", fallback = DISABLE)</code>——<strong>默认关闭</strong>，和 build/git 贡献者的默认开启不一样。</p>
+<p>解法是显式打开：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">management</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    env</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      enabled</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span></code></pre>
+<p>加上之后 info 端点立刻返回 <code>{"app":{"name":"prometheus-demo","version":"1.0.0",...}}</code>。很多「配置了 info 不生效」的问题都卡在这一处。</p>
+<h2 id="五自定义业务指标counter--timer--gauge">五、自定义业务指标：Counter / Timer / Gauge</h2>
+<h3 id="51-三类指标怎么选">5.1 三类指标怎么选</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>语义</th>
+<th>本项目用法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Counter</td>
+<td>只增不减的累计值</td>
+<td>订单创建总数（重启归零是正常的，Prometheus 用 <code>rate()</code> 处理）</td>
+</tr>
+<tr>
+<td>Timer</td>
+<td>次数 + 耗时分布</td>
+<td>下单接口的业务耗时，含直方图桶，可算 P95</td>
+</tr>
+<tr>
+<td>Gauge</td>
+<td>某一时刻的瞬时值</td>
+<td>当前活跃任务数</td>
+</tr>
+</tbody>
+</table>
+<p>选型铁律：Counter 不要拿来表示「当前数量」（它不能减）；Gauge 不要拿来统计事件次数（重启会丢历史）；Timer 想算分位数就必须开直方图。</p>
+<h3 id="52-指标埋点实现">5.2 指标埋点实现</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RestController</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequestMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/demo"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> DemoController</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MeterRegistry meterRegistry;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> AtomicInteger activeTasks </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> AtomicInteger</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">PostMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/orders"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> OrderResponse </span><span style="color:#6F42C1;--shiki-dark:#B392F0">createOrder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // Timer 包住业务方法，记录业务耗时；接口总耗时另有 http_server_requests 自动指标</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        Timer.Sample sample </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Timer.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">start</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(meterRegistry);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        try</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            OrderResponse response </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orderRepository.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">save</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            meterRegistry.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">counter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"demo.orders.created"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">increment</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(); </span><span style="color:#6A737D;--shiki-dark:#6A737D">// 成功后才递增</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> response;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        } </span><span style="color:#D73A49;--shiki-dark:#F97583">finally</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            sample.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">stop</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Timer.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"demo.orders.create.duration"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                    .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">publishPercentileHistogram</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">register</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(meterRegistry));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">PostMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/tasks/finish"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> finishTask</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        activeTasks.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">updateAndGet</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(current </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Math.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">max</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">0</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, current </span><span style="color:#D73A49;--shiki-dark:#F97583">-</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)); </span><span style="color:#6A737D;--shiki-dark:#6A737D">// 下限保护，不为负</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">GetMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/tasks"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">activeTasks</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        Gauge.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"demo.tasks.active"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, activeTasks, AtomicInteger</span><span style="color:#D73A49;--shiki-dark:#F97583">::</span><span style="color:#24292E;--shiki-dark:#E1E4E8">get)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">register</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(meterRegistry);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Map.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"active"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, activeTasks.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">get</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>几个值得注意的细节：</p>
+<ul>
+<li><strong>Counter 在业务成功后递增</strong>，失败路径不计数，这样「订单创建成功率」才有正确的分母口径；</li>
+<li><strong>Gauge 的被观测对象用字段强引用持有</strong>。Gauge 持有的是弱引用，如果被观测对象被 GC，Gauge 会变成 NaN——这是官方文档明说、又极容易被忽略的坑；</li>
+<li>任务数用 <code>updateAndGet</code> 做下限保护，连续 finish 不会出现负数。</li>
+</ul>
+<h3 id="53-指标命名转换实测">5.3 指标命名转换（实测）</h3>
+<p>Micrometer 用点号风格注册指标，Prometheus Registry 输出时会做命名规范化。<strong>注册名 ≠ 输出名</strong>，这是新手写 PromQL 时最常见的翻车点。</p>
+<table>
+<thead>
+<tr>
+<th>Micrometer 注册名</th>
+<th>Prometheus 实际输出序列</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>demo.orders.created</code></td>
+<td><code>demo_orders_total</code></td>
+<td>Counter 加 <code>_total</code> 后缀；<code>.created</code> 段被收敛</td>
+</tr>
+<tr>
+<td><code>demo.orders.create.duration</code></td>
+<td><code>demo_orders_create_duration_seconds_count / _sum / _bucket / _max</code></td>
+<td>Timer 转成秒单位的直方图族</td>
+</tr>
+<tr>
+<td><code>demo.tasks.active</code></td>
+<td><code>demo_tasks_active</code></td>
+<td>Gauge 直译</td>
+</tr>
+<tr>
+<td><code>http.server.requests</code></td>
+<td><code>http_server_requests_seconds_*</code></td>
+<td>自动 HTTP 指标同样转秒</td>
+</tr>
+</tbody>
+</table>
+<p>注意 <code>demo.orders.created</code> 的输出是 <code>demo_orders_total</code>，而不是直觉拼出来的 <code>demo_orders_created_total</code>——<code>.created</code> 这一段在命名规范化中被吃掉了。<strong>写面板查询前，先到 <code>/actuator/prometheus</code> 里看实际序列名</strong>，这一步能省掉后面所有「为什么查不到数据」的排查。</p>
+<p><img src="/blog/spring-boot-prometheus/spring-boot-prometheus-03.png" alt="三类指标选型"></p>
+<h2 id="六启动项目并本地验证">六、启动项目并本地验证</h2>
+<h3 id="61-验证指标端点">6.1 验证指标端点</h3>
+<p>第三个命令必须带 <code>Accept: text/plain</code>——prometheus 端点产出纯文本，用纯 JSON 的 Accept 去请求会得到 406：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -H</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "Accept: text/plain"</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> http://localhost:8081/actuator/prometheus</span></span></code></pre>
+<p>返回的文本里应能看到 JVM、HTTP 与业务指标样本。触发一次下单后，回到该端点能看到三个业务指标的真实样本。</p>
+<h2 id="七prometheus-接入追加抓取任务">七、Prometheus 接入：追加抓取任务</h2>
+<h3 id="71-确认本机服务形态">7.1 确认本机服务形态</h3>
+<p><code>status/config</code> 返回的配置里只有 Prometheus 自抓取一个 job——这就是要追加任务的原因。<code>/-/reload</code> 返回 403 说明这个实例没开 <code>--web.enable-lifecycle</code>，改配置没法热生效，只能走重启。</p>
+<h3 id="72-追加-scrape-任务">7.2 追加 scrape 任务</h3>
+<p>先备份，再改，改完校验语法。在 <code>scrape_configs:</code> 下追加：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">scrape_configs</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  - </span><span style="color:#22863A;--shiki-dark:#85E89D">job_name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">spring-boot</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    metrics_path</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">/actuator/prometheus</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    static_configs</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      - </span><span style="color:#22863A;--shiki-dark:#85E89D">targets</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">          - </span><span style="color:#032F62;--shiki-dark:#9ECBFF">localhost:8081</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        labels</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">          application</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">prometheus-demo</span></span></code></pre>
+<p>三个关键点：</p>
+<ul>
+<li><code>metrics_path</code> 必须是 <code>/actuator/prometheus</code>，写成 <code>/metrics</code> 会 404；</li>
+<li><code>targets</code> 里的地址是<strong>从 Prometheus 进程的视角</strong>出发的——本机 Windows 进程抓本机应用用 <code>localhost:8081</code>；如果 Prometheus 在 Docker 里跑，要换成 <code>host.docker.internal:8081</code>；</li>
+<li><code>labels</code> 是给这组目标追加的静态标签，<code>application</code> 标签可以和应用侧 <code>metrics.tags</code> 注入的标签互相印证。</li>
+</ul>
+<h3 id="73-让配置生效热重载还是重启">7.3 让配置生效：热重载还是重启</h3>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>条件</th>
+<th>命令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>热重载</td>
+<td>启动时带 <code>--web.enable-lifecycle</code></td>
+<td><code>curl -X POST http://localhost:9090/-/reload</code></td>
+</tr>
+<tr>
+<td>重启进程</td>
+<td>无条件</td>
+<td>停掉进程后按原命令重新启动</td>
+</tr>
+</tbody>
+</table>
+<p>重启后日志出现 <code>TSDB started</code>、<code>Loading configuration file</code>、<code>Server is ready to receive web requests.</code> 三行即成功。历史时序数据保留（TSDB 是本地目录，不受进程重启影响）。</p>
+<p>如果生产上经常需要增删抓取目标，建议启动 Prometheus 时加上 <code>--web.enable-lifecycle</code>，改完配置一条 reload 请求生效；但这个管理接口必须限制访问来源，不能暴露公网。更彻底的做法是用 file_sd 文件服务发现或对接注册中心（Consul/Nacos/Kubernetes），抓取目标列表与 Prometheus 配置解耦。</p>
+<h3 id="74-验证-targets-与指标入库">7.4 验证 Targets 与指标入库</h3>
+<p>关注 <code>activeTargets</code> 里 <code>job="spring-boot"</code> 这一项：<code>health</code> 应为 <code>up</code>，<code>scrapeUrl</code> 应为 <code>http://localhost:8081/actuator/prometheus</code>；也可以在浏览器看 <code>http://localhost:9090/targets</code>，DOWN 时点开会看到具体错误信息。</p>
+<p>注意 <code>rate()</code> 类查询需要窗口内至少两个样本点——刚接入时等 30 秒以上再查，第一次查不到数据不一定是配置错了。</p>
+<h2 id="八promql-常用查询">八、PromQL 常用查询</h2>
+<table>
+<thead>
+<tr>
+<th>目标</th>
+<th>PromQL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>目标存活</td>
+<td><code>up{job="spring-boot"}</code></td>
+</tr>
+<tr>
+<td>JVM 堆内存</td>
+<td><code>jvm_memory_used_bytes{area="heap",job="spring-boot"}</code></td>
+</tr>
+<tr>
+<td>进程 CPU</td>
+<td><code>process_cpu_usage{job="spring-boot"}</code></td>
+</tr>
+<tr>
+<td>下单速率</td>
+<td><code>sum(rate(demo_orders_total[2m]))</code></td>
+</tr>
+<tr>
+<td>HTTP 请求速率</td>
+<td><code>sum(rate(http_server_requests_seconds_count{job="spring-boot"}[2m]))</code></td>
+</tr>
+<tr>
+<td>按 URI/状态码的请求速率</td>
+<td><code>sum by (uri, status) (rate(http_server_requests_seconds_count[2m]))</code></td>
+</tr>
+<tr>
+<td>平均请求耗时</td>
+<td><code>sum(rate(http_server_requests_seconds_sum[2m])) / sum(rate(http_server_requests_seconds_count[2m]))</code></td>
+</tr>
+<tr>
+<td>下单 P95 耗时</td>
+<td><code>histogram_quantile(0.95, sum by (le) (rate(demo_orders_create_duration_seconds_bucket[2m])))</code></td>
+</tr>
+<tr>
+<td>当前活跃任务数</td>
+<td><code>demo_tasks_active</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>histogram_quantile(0.95, ...)</code> 返回约 0.125 秒左右，和下单模拟耗时（30~120ms）的分布吻合——直方图链路是准的。分位数查询依赖 <code>_bucket</code> 序列，查不到就回头检查 <code>percentiles-histogram</code> 配置和 Timer 的 <code>publishPercentileHistogram()</code>。</p>
+<h2 id="九grafana-接入与面板">九、Grafana 接入与面板</h2>
+<h3 id="91-添加数据源">9.1 添加数据源</h3>
+<ol>
+<li>浏览器打开 <code>http://localhost:3000</code> 并登录；</li>
+<li>左侧菜单 Connections → Data sources → Add data source，选 Prometheus；</li>
+<li>URL 填 <code>http://localhost:9090</code>——<strong>注意这个地址是从 Grafana 进程视角出发的</strong>。本机 Grafana 和 Prometheus 都是 Windows 进程，localhost 正确；如果两者都在 Docker Compose 网络里，要填服务名 <code>http://prometheus:9090</code>；</li>
+<li>点 Save &#x26; test，出现绿色 “Successfully queried the Prometheus API” 即通。</li>
+</ol>
+<h3 id="92-面板实配">9.2 面板实配</h3>
+<p>新建 Dashboard，逐个添加 Visualization 面板，查询用第八章的 PromQL。实测保存的五个面板：</p>
+<table>
+<thead>
+<tr>
+<th>面板</th>
+<th>查询</th>
+<th>图表类型</th>
+<th>实测效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>服务状态</td>
+<td><code>up{job="spring-boot"}</code></td>
+<td>Time series（也可用 Stat，阈值 1 绿 / 0 红）</td>
+<td>序列稳定在 1</td>
+</tr>
+<tr>
+<td>活跃任务数</td>
+<td><code>demo_tasks_active</code></td>
+<td>Gauge</td>
+<td>显示与接口返回一致</td>
+</tr>
+<tr>
+<td>下单速率</td>
+<td><code>sum(rate(demo_orders_total[2m]))</code></td>
+<td>Time series</td>
+<td>压测时段出现明显尖峰</td>
+</tr>
+<tr>
+<td>下单 P95 耗时</td>
+<td><code>histogram_quantile(0.95, sum by (le) (rate(demo_orders_create_duration_seconds_bucket[2m])))</code></td>
+<td>Time series</td>
+<td>与 PromQL 实测吻合</td>
+</tr>
+<tr>
+<td>JVM 堆内存</td>
+<td><code>sum(jvm_memory_used_bytes{area="heap",job="spring-boot"})</code></td>
+<td>Time series</td>
+<td>典型 GC 锯齿</td>
+</tr>
+</tbody>
+</table>
+<p>两个实操细节：</p>
+<ul>
+<li>面板查询切到代码模式粘贴 PromQL，点「运行查询」确认预览有数据后再返回；<strong>每加完一个面板都要点一次仪表板顶部的保存</strong>——只保存面板不保存仪表板，刷新后面板会丢；</li>
+<li>新面板默认 Time series；Gauge 类瞬时值在可视化选择器里切换，Grafana 会根据查询结果在右侧给出建议类型。</li>
+</ul>
+<h3 id="93-面板没数据的排查顺序">9.3 面板没数据的排查顺序</h3>
+<ol>
+<li>Prometheus 的 <code>/targets</code> 页面确认应用 UP；</li>
+<li>Prometheus 的 Graph 页面直接跑同一条 PromQL；</li>
+<li>都有数据再检查 Grafana：数据源 URL、面板查询、右上角时间范围（默认 15m 有时太短）。</li>
+</ol>
+<h2 id="十告警规则目标宕机告警">十、告警规则：目标宕机告警</h2>
+<p>Prometheus 可以按 PromQL 周期性评估告警规则。给「应用抓取失败」配一条最基础的规则——<code>springboot-alerts.yml</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">groups</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  - </span><span style="color:#22863A;--shiki-dark:#85E89D">name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">springboot</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    rules</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      - </span><span style="color:#22863A;--shiki-dark:#85E89D">alert</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">TargetDown</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        expr</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">up{job="spring-boot"} == 0</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        for</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">1m</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        labels</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">          severity</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">critical</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        annotations</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">          summary</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"Spring Boot 应用抓取失败"</span></span></code></pre>
+<p>在 <code>prometheus.yml</code> 顶层加载规则文件，然后重载/重启生效。<code>for: 1m</code> 的含义是条件要<strong>持续满足一分钟</strong>才触发，避免抓取抖动造成的误报。规则触发后可以在 <code>http://localhost:9090/alerts</code> 页面看到 firing 状态。</p>
+<p>要发邮件、企业微信、钉钉通知，还需要再接 Alertmanager（或改用 Grafana Alerting）——<strong>告警规则本身只产生状态，不发通知</strong>。</p>
+<p><img src="/blog/spring-boot-prometheus/spring-boot-prometheus-04.png" alt="告警链路"></p>
+<h2 id="十一生产环境上线清单">十一、生产环境上线清单</h2>
+<ol>
+<li><strong>管理端口隔离</strong>：8081 只对监控网络开放（防火墙/安全组/NetworkPolicy），不要映射公网；</li>
+<li><strong>端点最小暴露</strong>：保持 <code>include: health,info,prometheus,metrics</code> 这类白名单，禁止 <code>include: "*"</code>——env/configprops 会泄露配置与内部结构；</li>
+<li><strong>带认证的抓取</strong>：引入 Spring Security 后 actuator 会被拦截，给 Prometheus 配专用只读账号（Prometheus 侧用 <code>basic_auth</code> + 密码文件），不要为了抓取成功关掉安全机制；</li>
+<li><strong>标签基数控制</strong>：禁止把 userId、orderId、完整 URL、requestId 做标签。每个不同的标签组合都是一条独立时间序列，高基数会同时打爆内存、磁盘和查询；URL 用路由模板（<code>/api/demo/orders</code> 而不是带参数的完整路径）；</li>
+<li><strong>数据保留规划</strong>：本机默认 15 天，按实例数 × 序列数 × 保留天数估算磁盘；大规模场景考虑远程存储或联邦；</li>
+<li><strong>Grafana 固定版本</strong>：生产不用 latest 镜像，密码走密钥管理，不进 Git。</li>
+</ol>
+<h2 id="十二常见问题排查">十二、常见问题排查</h2>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>根因</th>
+<th>解法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/actuator/prometheus</code> 404</td>
+<td>缺 <code>micrometer-registry-prometheus</code> 依赖；或端点未暴露</td>
+<td>补依赖；检查 <code>exposure.include</code> 含 prometheus</td>
+</tr>
+<tr>
+<td>端点 406</td>
+<td>请求 Accept 是纯 JSON</td>
+<td>加 <code>Accept: text/plain</code></td>
+</tr>
+<tr>
+<td>Target DOWN 且 connection refused</td>
+<td>应用没起 / 端口错 / 网络不通</td>
+<td>先在 Prometheus 所在机器 curl 目标 URL</td>
+</tr>
+<tr>
+<td>Target DOWN 且 404</td>
+<td><code>metrics_path</code> 写错</td>
+<td>必须是 <code>/actuator/prometheus</code></td>
+</tr>
+<tr>
+<td><code>/actuator/info</code> 返回 <code>{}</code></td>
+<td>Boot 3.5 env 贡献者默认关闭</td>
+<td><code>management.info.env.enabled: true</code></td>
+</tr>
+<tr>
+<td>集成测试里 prometheus 端点 404</td>
+<td>Spring Boot Test 默认关可观测性</td>
+<td>测试类加 <code>@AutoConfigureObservability</code></td>
+</tr>
+<tr>
+<td>PromQL 查不到 <code>demo_orders_created_total</code></td>
+<td>注册名 ≠ 输出名</td>
+<td>实际序列是 <code>demo_orders_total</code>，先看端点输出</td>
+</tr>
+<tr>
+<td><code>rate()</code> 查不到数据</td>
+<td>窗口内样本点不足</td>
+<td>等 30 秒以上（至少两轮抓取）再查</td>
+</tr>
+<tr>
+<td>P95 查询为空</td>
+<td>没有直方图桶</td>
+<td>确认 <code>percentiles-histogram</code> 配置与 Timer 的 <code>publishPercentileHistogram()</code></td>
+</tr>
+<tr>
+<td>Gauge 变 NaN</td>
+<td>被观测对象被 GC</td>
+<td>用字段强引用持有 AtomicInteger 等对象</td>
+</tr>
+<tr>
+<td>Grafana Save &#x26; test 失败</td>
+<td>数据源地址视角错误</td>
+<td>本机进程用 localhost；容器间用服务名</td>
+</tr>
+<tr>
+<td>改了 prometheus.yml 不生效</td>
+<td>未启 lifecycle API</td>
+<td>热重载（<code>--web.enable-lifecycle</code> + reload）或重启进程</td>
+</tr>
+</tbody>
+</table>
+<h2 id="十三小结">十三、小结</h2>
+<p>Spring Boot 整合 Prometheus 的完整链路只有四步：</p>
+<ol>
+<li><strong>依赖</strong>：web + actuator + <code>micrometer-registry-prometheus</code>，版本交给 Boot BOM；</li>
+<li><strong>暴露</strong>：管理端口独立（8081），白名单暴露 prometheus 端点，注入 application 公共标签；</li>
+<li><strong>抓取</strong>：prometheus.yml 加一个 job 指向 <code>localhost:8081/actuator/prometheus</code>，让配置生效；</li>
+<li><strong>消费</strong>：PromQL 查询、Grafana 面板、告警规则。</li>
+</ol>
+<p>三个最值得记住的实战点：</p>
+<ol>
+<li><strong>注册名不等于输出序列名</strong>：<code>demo.orders.created</code> → <code>demo_orders_total</code>，写查询前先看端点实际输出；</li>
+<li><strong>Boot 3.5 的 info 端点默认空</strong>：<code>management.info.env.enabled: true</code>；</li>
+<li><strong>改抓取配置要想清楚生效方式</strong>：lifecycle API 没开就只能重启，生产上建议 file_sd 或服务发现解耦。</li>
+</ol>
+<p>监控的价值不在「接上了」，而在出问题时有数据可查：下单速率掉了、P95 涨了、堆内存爬坡了——这些都从这套链路里来。</p>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；内存仓储仅用于演示，真实项目应替换为持久层并补充认证与网络隔离。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-prometheus/">https://zhanzhenguan.github.io/blog/spring-boot-prometheus/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-netty/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</div> </a> <a class="next" href="/blog/spring-boot-rabbitmq/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板","description":"整理 Spring Boot 3 接入 Prometheus 监控闭环的要点：Actuator/Micrometer/registry-prometheus 三者分工、版本基线、业务与管理端口分离、端点白名单与全局标签、Counter/Timer/Gauge 选型与埋点、Micrometer 注册名到 Prometheus 序列名转换、Prometheus 抓取任务配置与生效方式、Targets 入库验证、常用 PromQL、Grafana 数据源与面板、告警规则与 Alertmanager、生产上线清单（端口隔离/认证抓取/标签基数/数据保留）与常见问题排查。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-prometheus/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

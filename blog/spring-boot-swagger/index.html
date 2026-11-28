@@ -1,0 +1,541 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 3 接入接口文档的要点：Swagger/OpenAPI/Springdoc 概念区分、为何不用 Springfox、版本兼容矩阵、springdoc-openapi-starter-webmvc-ui 依赖与参数名保留、application.yml 配置与默认地址、@OpenAPIDefinition 与 @Configuration、@Tag/@Operation/@Parameter/@Schema 注解、搜索分页与 Multipart 上传、枚举内联规则、统一异常与 NoResourceFoundException 404、JWT Bearer 方案、Security 放行、GroupedOpenApi 分组及全局 packages-to-scan 叠加失效坑、Swagger2 注解对照与生产建议。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭"><meta property="og:description" content="整理 Spring Boot 3 接入接口文档的要点：Swagger/OpenAPI/Springdoc 概念区分、为何不用 Springfox、版本兼容矩阵、springdoc-openapi-starter-webmvc-ui 依赖与参数名保留、application.yml 配置与默认地址、@OpenAPIDefinition 与 @Configuration、@Tag/@Operation/@Parameter/@Schema 注解、搜索分页与 Multipart 上传、枚举内联规则、统一异常与 NoResourceFoundException 404、JWT Bearer 方案、Security 放行、GroupedOpenApi 分组及全局 packages-to-scan 叠加失效坑、Swagger2 注解对照与生产建议。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-swagger/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 11 分钟</span> <span>· 3423 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/swagger/">#Swagger</a><a class="tag" href="/tags/openapi/">#OpenAPI</a><a class="tag" href="/tags/062d05a4/">#接口文档</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li class="current">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭（本文）</li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第二十一部分，在 JDK 17 + Spring Boot 3.5.16 环境中接入接口文档：版本选型、依赖、配置、DTO、Controller、异常处理、JWT 认证、文档分组、编译验证完整走一遍。技术栈：Spring Boot 3.5.16、JDK 17、springdoc-openapi 2.10.0、Swagger UI 5.34.0、Spring MVC。代码为通用示例，敏感信息按实际环境脱敏。</p>
+<h2 id="一版本基线">一、版本基线</h2>
+<h3 id="11-先分清三个概念">1.1 先分清三个概念</h3>
+<ul>
+<li><strong>Swagger</strong>：早期描述 REST API 的规范及工具生态，Swagger 2.0 是规范版本。</li>
+<li><strong>OpenAPI</strong>：Swagger 规范捐赠后演进的名称，OpenAPI 3.x 是当前主流接口描述规范。</li>
+<li><strong>Swagger UI</strong>：根据 OpenAPI 描述文件生成网页界面，支持查看接口、填写参数、发送请求。</li>
+<li><strong>Springdoc OpenAPI</strong>：扫描 Spring MVC 控制器、DTO、注解，自动生成 OpenAPI 文档，并集成 Swagger UI。</li>
+</ul>
+<p>一句话概括：springdoc 生成的是 <strong>OpenAPI 3 文档</strong>，展示用的仍然是 <strong>Swagger UI</strong>。不要把 springdoc 直接称为「Swagger 2.0」。</p>
+<h3 id="12-为什么不用-springfox">1.2 为什么不用 Springfox</h3>
+<p>Spring Boot 3 迁移到 Jakarta EE，Servlet 等 API 包名从 <code>javax.*</code> 变成 <code>jakarta.*</code>，Spring MVC 的路径匹配机制也变了。Springfox（<code>springfox-swagger2</code>、<code>springfox-boot-starter</code>）主要面向较早的 Spring 生态，在 Boot 3 项目中容易出现启动失败、文档页面异常。</p>
+<p>所以 Boot 3 项目只用 springdoc 2.x，并且 <strong>不要额外引入任何 Springfox 依赖，也不要同时引入多个版本的 swagger-annotations</strong>，否则会出现注解类冲突。</p>
+<h3 id="13-版本兼容矩阵">1.3 版本兼容矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>Spring Boot 版本</th>
+<th>springdoc 建议版本</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3.0.x</td>
+<td>2.0.x ~ 2.1.x</td>
+<td>按具体补丁版本验证</td>
+</tr>
+<tr>
+<td>3.1.x</td>
+<td>2.2.x</td>
+<td>建议使用匹配的 2.2.x</td>
+</tr>
+<tr>
+<td>3.2.x</td>
+<td>2.3.x ~ 2.5.x</td>
+<td>建议使用匹配的 2.3 ~ 2.5 系列</td>
+</tr>
+<tr>
+<td>3.3.x</td>
+<td>2.6.x</td>
+<td>避免直接套用不匹配版本</td>
+</tr>
+<tr>
+<td>3.4.x</td>
+<td>2.7.x ~ 2.8.x</td>
+<td>按官方兼容矩阵选择</td>
+</tr>
+<tr>
+<td>3.5.x</td>
+<td>2.8.x ~ 2.10.x</td>
+<td>本教程采用 2.10.0</td>
+</tr>
+</tbody>
+</table>
+<p>springdoc-openapi v2.10.0 Release Notes 写明：<code>Spring Boot 3.5.x line (built on Spring Boot 3.5.16)</code>，即该版本基于 Boot 3.5.16 构建，两者构建基线一致。依赖能下载不等于版本兼容，版本基线一定要先查官方资料再动手。</p>
+<p><img src="/blog/spring-boot-swagger/spring-boot-swagger-01.png" alt="接口文档生成链路"></p>
+<h2 id="二环境与工程结构">二、环境与工程结构</h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>本教程版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JDK</td>
+<td>17</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>3.5.16</td>
+</tr>
+<tr>
+<td>Maven</td>
+<td>3.9.3（3.6+ 即可）</td>
+</tr>
+<tr>
+<td>Web 框架</td>
+<td>Spring MVC（<code>spring-boot-starter-web</code>）</td>
+</tr>
+<tr>
+<td>接口文档</td>
+<td>springdoc-openapi 2.10.0 + Swagger UI 5.34.0</td>
+</tr>
+<tr>
+<td>端口</td>
+<td>8080</td>
+</tr>
+</tbody>
+</table>
+<h2 id="三添加-maven-依赖">三、添加 Maven 依赖</h2>
+<h3 id="31-pomxml">3.1 pom.xml</h3>
+<p>只需要一个 <code>springdoc-openapi-starter-webmvc-ui</code>，它已经包含 OpenAPI 文档生成能力和 Swagger UI 页面，不需要再手动加 <code>springdoc-openapi-starter-webmvc-api</code> 或 swagger-ui 依赖。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-web&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-validation&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springdoc&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>springdoc-openapi-starter-webmvc-ui&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>2.10.0&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="32-依赖树检查">3.2 依赖树检查</h3>
+<p>构建后跑一次依赖树：springdoc 只有 2.10.0 一个版本，<code>swagger-annotations-jakarta</code> 只有一个版本，没有 Springfox，也没有被手工覆盖的 Spring Web 组件。</p>
+<h3 id="33-保留方法参数名">3.3 保留方法参数名</h3>
+<p><code>maven-compiler-plugin</code> 的 <code>&#x3C;parameters>true&#x3C;/parameters></code> 不能省。Spring Boot 3.2 起参数名发现机制有变化，未开启时文档中的参数名可能显示成 <code>arg0</code>、<code>arg1</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">plugin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.apache.maven.plugins&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>maven-compiler-plugin&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">configuration</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">parameters</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>true&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">parameters</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">configuration</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">plugin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h2 id="四配置-swagger-ui">四、配置 Swagger UI</h2>
+<h3 id="41-applicationyml">4.1 application.yml</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">springdoc</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  api-docs</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    enabled</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    path</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">/v3/api-docs</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  swagger-ui</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    enabled</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    path</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">/swagger-ui.html</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    operations-sorter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">alpha</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    tags-sorter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">alpha</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    display-request-duration</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">  # packages-to-scan: com.example.swagger.controller   # 启用分组时不要写全局扫描包，见第十三章</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">logging</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  charset</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    console</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">UTF-8</span></span></code></pre>
+<h3 id="42-配置项含义">4.2 配置项含义</h3>
+<table>
+<thead>
+<tr>
+<th>配置项</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>springdoc.api-docs.enabled</code></td>
+<td>是否启用 OpenAPI 文档接口</td>
+</tr>
+<tr>
+<td><code>springdoc.api-docs.path</code></td>
+<td>JSON 文档地址</td>
+</tr>
+<tr>
+<td><code>springdoc.swagger-ui.enabled</code></td>
+<td>是否启用 Swagger UI</td>
+</tr>
+<tr>
+<td><code>springdoc.swagger-ui.path</code></td>
+<td>UI 页面入口</td>
+</tr>
+<tr>
+<td><code>operations-sorter</code></td>
+<td>接口排序方式，<code>alpha</code> 表示按名称排序</td>
+</tr>
+<tr>
+<td><code>tags-sorter</code></td>
+<td>分组标签排序方式</td>
+</tr>
+<tr>
+<td><code>display-request-duration</code></td>
+<td>是否显示请求耗时</td>
+</tr>
+<tr>
+<td><code>packages-to-scan</code></td>
+<td>全局扫描指定 Controller 包（本项目未启用）</td>
+</tr>
+</tbody>
+</table>
+<p>默认访问地址：UI 为 <code>http://localhost:8080/swagger-ui.html</code>，JSON 为 <code>/v3/api-docs</code>，YAML 为 <code>/v3/api-docs.yaml</code>。若设置了 <code>server.servlet.context-path</code>，地址里要带上上下文路径。</p>
+<h3 id="43-生产环境关闭文档">4.3 生产环境关闭文档</h3>
+<p>生产环境按需关闭文档，用多环境配置落地：<code>prod</code> profile 下把 <code>springdoc.api-docs.enabled</code> 和 <code>springdoc.swagger-ui.enabled</code> 都设为 <code>false</code>。实测业务接口 <code>/api/users</code> 仍返回 200，而 <code>/v3/api-docs</code> 和 <code>/swagger-ui.html</code> 都返回 404，符合预期。</p>
+<p><img src="/blog/spring-boot-swagger/spring-boot-swagger-04.png" alt="开发/生产文档开关"></p>
+<h2 id="五启动类与全局-openapi-信息">五、启动类与全局 OpenAPI 信息</h2>
+<p>启动类没有任何特殊配置。用 <code>@OpenAPIDefinition</code> 定义文档标题、描述、版本和联系人：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">OpenAPIDefinition</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        info</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> @</span><span style="color:#D73A49;--shiki-dark:#F97583">Info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">                title</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "Demo API"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">                description</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "Spring Boot 接口文档示例"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">                version</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "v1"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">                contact</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> @</span><span style="color:#D73A49;--shiki-dark:#F97583">Contact</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">name</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "demo"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)))</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> OpenApiConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>容易忽略的细节：<code>@Configuration</code> 不能省。官方 FAQ 指出，如果把 <code>@OpenAPIDefinition</code> 或 <code>@SecurityScheme</code> 挂在一个没有任何实现的类上，AOT/原生编译或类裁剪时这个类可能被优化掉，注解随之失效。</p>
+<h2 id="六编写-dto-与参数校验">六、编写 DTO 与参数校验</h2>
+<p><code>@Schema</code> 负责文档描述，<code>@NotBlank</code> / <code>@Size</code> / <code>@Email</code> 负责真实校验。注意 Boot 3 用的是 <code>jakarta.validation.constraints</code>，不是 <code>javax</code>。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> record</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> UserCreateRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">NotBlank</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">message</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "姓名不能为空"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">Size</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">max</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 50</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">Schema</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">description</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "用户姓名"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">example</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "张三"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String username,</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">Email</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">message</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "邮箱格式不正确"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">Schema</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">description</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "邮箱"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String email) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>响应 DTO、订单 DTO 与枚举同理，字段上用 <code>@Schema</code> 补充示例与约束。</p>
+<h2 id="七用内存仓储让-crud-行为自洽">七、用内存仓储让 CRUD 行为自洽</h2>
+<p>Controller 直接内存固定返回时，<code>getById</code> 无论传什么 ID 都返回张三、<code>delete</code> 是空实现，但注解里又声明了 404——演示文档生成没问题，但接口声明与真实行为对不上，用 Swagger UI 点一遍就会困惑。</p>
+<p>实践中加一层线程安全的内存仓储，让新增可查、删除后查不到、不存在的 ID 真的返回 404。初始两条数据 ID 为 1001、1002，自增从 1003 开始。真实项目把这一层换成 JdbcTemplate / JPA / MyBatis 即可，Controller 不用改。</p>
+<h2 id="八controller-与核心注解">八、Controller 与核心注解</h2>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RestController</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequestMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/users"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Tag</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">name</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "用户管理"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">description</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "用户增删改查接口"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> UserController</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">GetMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/{id}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Operation</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">summary</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "按 ID 查询用户"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">description</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "返回指定用户详情"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> UserResponse </span><span style="color:#6F42C1;--shiki-dark:#B392F0">getById</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(@</span><span style="color:#D73A49;--shiki-dark:#F97583">Parameter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">description</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "用户 ID"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) @</span><span style="color:#D73A49;--shiki-dark:#F97583">PathVariable</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Long </span><span style="color:#E36209;--shiki-dark:#FFAB70">id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // ...</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>常用注解的作用位置：</p>
+<table>
+<thead>
+<tr>
+<th>注解</th>
+<th>作用</th>
+<th>常见位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@Tag</code></td>
+<td>定义接口分组名称及说明</td>
+<td>Controller 类</td>
+</tr>
+<tr>
+<td><code>@Operation</code></td>
+<td>定义接口摘要、详细描述</td>
+<td>方法</td>
+</tr>
+<tr>
+<td><code>@Parameter</code></td>
+<td>描述单个请求参数</td>
+<td>方法参数</td>
+</tr>
+<tr>
+<td><code>@Schema</code></td>
+<td>描述 DTO、字段、示例及约束</td>
+<td>类、字段、参数</td>
+</tr>
+<tr>
+<td><code>@ApiResponse</code> / <code>@ApiResponses</code></td>
+<td>描述 HTTP 响应</td>
+<td>方法</td>
+</tr>
+<tr>
+<td><code>@SecurityScheme</code></td>
+<td>定义认证方案</td>
+<td>配置类</td>
+</tr>
+<tr>
+<td><code>@SecurityRequirement</code></td>
+<td>声明接口使用的认证方案</td>
+<td>类、方法</td>
+</tr>
+</tbody>
+</table>
+<p><img src="/blog/spring-boot-swagger/spring-boot-swagger-02.png" alt="注解分层位置"></p>
+<h2 id="九补齐常用场景搜索文件上传枚举">九、补齐常用场景：搜索、文件上传、枚举</h2>
+<h3 id="91-搜索与分页参数">9.1 搜索与分页参数</h3>
+<p><code>/api/users/search</code> 用多个 <code>@RequestParam</code> + <code>@Parameter</code> 描述查询参数，<code>defaultValue</code> 会直接体现在 Swagger UI 的输入框里。分页参数非法时抛 <code>IllegalArgumentException</code>。</p>
+<h3 id="92-文件上传">9.2 文件上传</h3>
+<p>两个要点缺一不可：<code>consumes = MediaType.MULTIPART_FORM_DATA_VALUE</code> 和 <code>MultipartFile</code> + <code>@RequestPart</code>。实测生成的 OpenAPI 文档中，该操作的 <code>requestBody.content</code> 包含 <code>multipart/form-data</code>，Swagger UI 会渲染出文件选择框。</p>
+<h3 id="93-枚举在文档中的实际效果">9.3 枚举在文档中的实际效果</h3>
+<p>和直觉不一致的一点：springdoc 2.10.0 把枚举<strong>内联到字段属性</strong>里。<code>components.schemas</code> 里没有 <code>OrderStatus</code> 这个 key，但枚举值一个不少地出现在 <code>OrderResponse.status.enum</code> 中，Swagger UI 里照样是下拉选择。写自动化校验脚本时按这个结构断言，别想当然去找独立枚举 Schema。</p>
+<h2 id="十统一异常处理">十、统一异常处理</h2>
+<p>本项目保持成功响应为业务 DTO 本身，只把异常响应统一成 <code>ApiError</code>。</p>
+<h3 id="101-状态码映射">10.1 状态码映射</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>HTTP</th>
+<th>响应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>空姓名 / 非法邮箱 / 姓名超长</td>
+<td>400</td>
+<td><code>fieldErrors</code> 含具体字段提示</td>
+</tr>
+<tr>
+<td>ID 传 <code>abc</code>、缺 <code>file</code> 部件、非法 JSON、分页参数越界</td>
+<td>400</td>
+<td>统一错误体</td>
+</tr>
+<tr>
+<td>用户 / 订单不存在</td>
+<td>404</td>
+<td><code>code=404</code></td>
+</tr>
+<tr>
+<td><code>/favicon.ico</code> 等静态资源</td>
+<td>404</td>
+<td>不打印 ERROR 堆栈</td>
+</tr>
+</tbody>
+</table>
+<p>最后一条是专门加的防御：Spring Boot 3 里访问不存在的静态资源会抛 <code>NoResourceFoundException</code>，如果没有显式处理，容易被兜底逻辑变成 500 并打一屏 ERROR 堆栈。显式映射成 404 后，启动日志能保持干净：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">ExceptionHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(NoResourceFoundException.class)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity</span><span style="color:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="color:#24292E;--shiki-dark:#E1E4E8">Map</span><span style="color:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="color:#24292E;--shiki-dark:#E1E4E8">String, Object</span><span style="color:#D73A49;--shiki-dark:#F97583">>></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> staticNotFound</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(NoResourceFoundException e) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">status</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(HttpStatus.NOT_FOUND)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">body</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Map.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"code"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">404</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"message"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"资源不存在"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h2 id="十一配置-jwt-bearer-token-认证">十一、配置 JWT Bearer Token 认证</h2>
+<h3 id="111-声明安全方案">11.1 声明安全方案</h3>
+<p>安全方案配置类同样带 <code>@Configuration</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">SecurityScheme</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        name</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "Bearer Authentication"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        type</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SecuritySchemeType.HTTP,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        scheme</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "bearer"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        bearerFormat</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "JWT"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SecurityConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="112-在接口上声明">11.2 在接口上声明</h3>
+<p>受保护接口或 Controller 类上加 <code>@SecurityRequirement(name = "Bearer Authentication")</code>。启动后 Swagger UI 右上角出现 <code>Authorize</code> 按钮，输入令牌后，受保护接口的调试请求会带上 <code>Authorization</code> 请求头。</p>
+<h3 id="113-安全提醒">11.3 安全提醒</h3>
+<p><code>Authorize</code> 只负责在调试请求中携带凭证，<strong>不会替代 Spring Security 的身份认证和权限校验</strong>。若项目为聚焦文档本身没引入 Spring Security，受保护接口无需令牌也能访问。不要把真实生产 Token 写进源码或公开文档。</p>
+<h2 id="十二spring-security-放行文档地址">十二、Spring Security 放行文档地址</h2>
+<p>若项目集成 Spring Security，需要按实际安全策略放行文档资源，否则页面会出现 401/403。两点说清楚：</p>
+<ol>
+<li>本项目<strong>没有引入</strong> <code>spring-boot-starter-security</code>，放行代码只是条件性示例；照搬进本项目会因为缺少相关类而编译失败。</li>
+<li>放行的是文档资源，业务 API 仍按项目规则鉴权。生产环境是否对外开放 Swagger UI 由安全策略决定；若使用 OAuth2、网关或自定义过滤器，还要检查对应认证链路。</li>
+</ol>
+<h2 id="十三分组管理多个模块">十三、分组管理多个模块</h2>
+<h3 id="131-groupedopenapi-配置">13.1 GroupedOpenApi 配置</h3>
+<p>大型项目通常按模块拆分文档，用 <code>GroupedOpenApi</code> 分别生成：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> GroupedOpenApi </span><span style="color:#6F42C1;--shiki-dark:#B392F0">userApi</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> GroupedOpenApi.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">group</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"用户模块"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">pathsToMatch</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/users/**"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> GroupedOpenApi </span><span style="color:#6F42C1;--shiki-dark:#B392F0">orderApi</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> GroupedOpenApi.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">group</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"订单模块"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">pathsToMatch</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/orders/**"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>分组文档通过 <code>/v3/api-docs/{group}</code> 访问，Swagger UI 会读取 <code>swagger-config</code> 并在右上角展示分组下拉框。</p>
+<p><img src="/blog/spring-boot-swagger/spring-boot-swagger-03.png" alt="模块分组隔离"></p>
+<h3 id="132-实测踩坑全局-packages-to-scan-让分组失效">13.2 实测踩坑：全局 packages-to-scan 让分组失效</h3>
+<p>一次端到端验证中有两项分组失败：两个分组都返回了全部路径，tags 里同时出现两个模块，隔离完全没生效。排查过程：</p>
+<ol>
+<li>先确认分组 Bean 确实注册了——<code>swagger-config</code> 里两个分组都在，Bean 没问题；</li>
+<li>抓分组文档发现 <code>paths</code> 是全量，说明 Bean 生效但<strong>过滤条件没起作用</strong>；</li>
+<li>怀疑对象就是 <code>application.yml</code> 里那行全局 <code>springdoc.packages-to-scan</code>；</li>
+<li>对照实验：把全局配置注释掉，重新打包重启，再抓两个分组文档，隔离恢复。</li>
+</ol>
+<p>结论：<strong>一旦定义了 <code>GroupedOpenApi</code>，全局 <code>springdoc.packages-to-scan</code> 会与分组自身的 <code>packagesToScan</code> 叠加，导致分组过滤失效</strong>。全局配置写在 yml 的 <code>springdoc.packages-to-scan</code> 上，分组配置写在 <code>GroupedOpenApi</code> 的 <code>packagesToScan</code> 里，两处单独看都没错，放同一个项目里就会打架。</p>
+<p>处理方式二选一：</p>
+<ul>
+<li>需要分组时，不启用全局 <code>packages-to-scan</code>（本项目采用，配置保留为注释说明）；</li>
+<li>确实需要全局扫描包时，分组改用 <code>pathsToMatch("/api/users/**")</code> 这类按路径过滤的条件，不要同时依赖 <code>packagesToScan</code>。</li>
+</ul>
+<h3 id="133-分组访问注意点">13.3 分组访问注意点</h3>
+<p>分组名用中文时，URL 里要编码。浏览器和 Swagger UI 会自动处理，写脚本或命令行调用时记得编码。</p>
+<h2 id="十四编译启动与逐项验证">十四、编译、启动与逐项验证</h2>
+<h3 id="141-构建与集成测试">14.1 构建与集成测试</h3>
+<p>集成测试用 <code>@SpringBootTest(webEnvironment = RANDOM_PORT)</code> + <code>TestRestTemplate</code>，覆盖用户列表、404、创建、参数校验、OpenAPI JSON、YAML 与 UI 可用性。一个小坑：<code>getStatusCode()</code> 返回的是 <code>HttpStatusCode</code>，不能直接赋给 <code>HttpStatus</code>，改成 <code>HttpStatusCode</code> 接收即可。</p>
+<h3 id="142-验证分类">14.2 验证分类</h3>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>代表断言</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>用户模块正常流程</td>
+<td>列表、详情、创建 201、搜索命中、profile</td>
+</tr>
+<tr>
+<td>用户模块异常流程</td>
+<td>404、ID 类型错误 400、字段校验 400、非法 JSON 400、分页越界 400</td>
+</tr>
+<tr>
+<td>文件上传</td>
+<td>multipart 上传成功、缺 file 400</td>
+</tr>
+<tr>
+<td>删除与状态自洽</td>
+<td>204、删后 404、列表状态同步、删除不存在 404</td>
+</tr>
+<tr>
+<td>订单模块</td>
+<td>列表、枚举筛选、详情、404</td>
+</tr>
+<tr>
+<td>OpenAPI 文档</td>
+<td>OpenAPI 3、路径、tags、安全方案、必填字段、枚举、multipart</td>
+</tr>
+<tr>
+<td>YAML / 分组 / UI</td>
+<td>YAML、两个分组隔离、swagger-config、UI 页面、favicon</td>
+</tr>
+</tbody>
+</table>
+<p>几个关键实测结果：合法创建返回 201 且 <code>id=1003</code>；空姓名 + 非法邮箱返回 400，<code>fieldErrors</code> 同时包含两个字段；<code>@Schema(requiredMode = REQUIRED)</code> 与 <code>@NotBlank</code> 都生效；受保护接口的 <code>security</code> 里包含 Bearer 方案；<code>/favicon.ico</code> 返回 404 且日志无 ERROR 堆栈。</p>
+<h2 id="十五常见问题与排查">十五、常见问题与排查</h2>
+<table>
+<thead>
+<tr>
+<th>问题现象</th>
+<th>原因与处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>启动时报 <code>javax.servlet</code> 或类找不到</td>
+<td>混入旧版 Springfox 或 javax 依赖。移除 Springfox，Boot 3 用 jakarta API 和 springdoc 2.x</td>
+</tr>
+<tr>
+<td>Swagger UI 页面 404</td>
+<td>依赖未引入、路径配置错误或 context-path 遗漏。检查 starter、端口与 <code>springdoc.swagger-ui.path</code></td>
+</tr>
+<tr>
+<td>页面打开但接口列表为空</td>
+<td>Controller 未被扫描或分组路径不匹配。检查启动类包结构、组件扫描与分组配置</td>
+</tr>
+<tr>
+<td>接口返回 401/403</td>
+<td>Spring Security、网关或过滤器拦截。按策略放行文档路径，检查过滤器链</td>
+</tr>
+<tr>
+<td>OpenAPI JSON 返回 500</td>
+<td>类型解析失败、循环引用或自定义转换器问题。查看服务端堆栈，检查 DTO、泛型与 Jackson 配置</td>
+</tr>
+<tr>
+<td>参数名称未正确显示</td>
+<td>编译时未保留参数名。<code>maven-compiler-plugin</code> 开启 <code>&#x3C;parameters>true&#x3C;/parameters></code></td>
+</tr>
+<tr>
+<td>上传文件参数显示异常</td>
+<td>未声明 multipart 或参数类型不合适。用 <code>MultipartFile</code> 配合 <code>consumes</code></td>
+</tr>
+<tr>
+<td>JWT 无法调试</td>
+<td>未配置 <code>SecurityScheme</code> 或接口未声明 <code>SecurityRequirement</code>。配置 Bearer Scheme，检查请求头与后端鉴权</td>
+</tr>
+<tr>
+<td>两个分组返回全部接口</td>
+<td>全局 <code>packages-to-scan</code> 与分组 <code>packagesToScan</code> 叠加。二选一，见 13.2</td>
+</tr>
+<tr>
+<td>找不到独立的枚举 Schema</td>
+<td>springdoc 2.10.0 把枚举内联到字段属性。检查 <code>OrderResponse.properties.status.enum</code>，见 9.3</td>
+</tr>
+<tr>
+<td><code>/favicon.ico</code> 触发 500 + ERROR 堆栈</td>
+<td><code>NoResourceFoundException</code> 落到兜底异常。显式映射 404，见 10.3</td>
+</tr>
+</tbody>
+</table>
+<h2 id="十六生产环境使用建议">十六、生产环境使用建议</h2>
+<ul>
+<li>不要默认在公网生产环境开放 Swagger UI，按环境关闭或增加访问控制（本项目已给出 <code>prod</code> profile 示例）。</li>
+<li>开发、测试、生产使用不同配置，生产可设置 <code>springdoc.api-docs.enabled=false</code>、<code>springdoc.swagger-ui.enabled=false</code>。</li>
+<li>文档中不要出现真实密码、密钥、Token、身份证号、手机号等敏感信息。</li>
+<li>接口说明应描述真实业务语义、参数约束、错误码和权限要求，不要只依赖自动生成。</li>
+<li>统一响应结构、分页结构和异常响应应通过 DTO / <code>@Schema</code> 注解清晰描述。</li>
+<li>对外 API 建议把 OpenAPI 文档纳入版本管理和发布流程，避免接口实现与文档长期不一致。</li>
+<li>内存仓储仅用于演示，真实项目应替换为持久层，并补充事务、并发控制和权限校验。</li>
+</ul>
+<h2 id="十七swagger-2-与-springdoc-注解对照">十七、Swagger 2 与 Springdoc 注解对照</h2>
+<table>
+<thead>
+<tr>
+<th>旧版 Swagger 2 注解</th>
+<th>Springdoc / OpenAPI 3 注解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@Api</code></td>
+<td><code>@Tag</code></td>
+</tr>
+<tr>
+<td><code>@ApiOperation</code></td>
+<td><code>@Operation</code></td>
+</tr>
+<tr>
+<td><code>@ApiParam</code></td>
+<td><code>@Parameter</code></td>
+</tr>
+<tr>
+<td><code>@ApiModel</code></td>
+<td><code>@Schema</code></td>
+</tr>
+<tr>
+<td><code>@ApiModelProperty</code></td>
+<td><code>@Schema</code></td>
+</tr>
+<tr>
+<td><code>@ApiResponse</code>（旧包）</td>
+<td><code>io.swagger.v3.oas.annotations.responses.ApiResponse</code></td>
+</tr>
+</tbody>
+</table>
+<p>迁移时不要只做类名替换。注解包名、响应结构、参数位置、枚举、文件上传和安全定义的语义都要重新核对。新项目直接用 <code>io.swagger.v3.oas.annotations</code> 下的注解。</p>
+<h2 id="十八小结">十八、小结</h2>
+<ol>
+<li><strong>版本基线先查官方再动手</strong>：Boot 3.5.x 配 springdoc 2.10.0，官方 Release Notes 明确构建基线是 3.5.16。</li>
+<li><strong>文档声明要和接口行为一致</strong>：既然写了 404，就真的让不存在的资源返回 404；既然写了 multipart，就真的用 <code>MultipartFile</code>。</li>
+<li><strong>配置项之间会互相影响</strong>：全局 <code>packages-to-scan</code> 和 <code>GroupedOpenApi.packagesToScan</code> 叠加导致分组失效，是实测最有价值的发现，只看单章文档很难提前发现。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-swagger/">https://zhanzhenguan.github.io/blog/spring-boot-swagger/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-sso/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</div> </a> <a class="next" href="/blog/spring-boot-websocket/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭","description":"整理 Spring Boot 3 接入接口文档的要点：Swagger/OpenAPI/Springdoc 概念区分、为何不用 Springfox、版本兼容矩阵、springdoc-openapi-starter-webmvc-ui 依赖与参数名保留、application.yml 配置与默认地址、@OpenAPIDefinition 与 @Configuration、@Tag/@Operation/@Parameter/@Schema 注解、搜索分页与 Multipart 上传、枚举内联规则、统一异常与 NoResourceFoundException 404、JWT Bearer 方案、Security 放行、GroupedOpenApi 分组及全局 packages-to-scan 叠加失效坑、Swagger2 注解对照与生产建议。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-swagger/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

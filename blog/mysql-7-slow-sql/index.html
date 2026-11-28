@@ -1,0 +1,421 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="梳理慢 SQL 全流程优化：慢的阈值标准（用户接口 200ms、报表 5s、批量 30s）；慢查询日志开启参数、mysqldumpslow 汇总、SHOW PROCESSLIST 与 Druid/Arthas/pt-query-digest 工具；EXPLAIN 的 type/rows/Extra 判读；联合索引最左前缀与建索引口诀；六大索引失效场景（函数操作、隐式类型转换、左模糊、OR 非索引列、违反最左前缀、范围右边列失效）；SELECT *、深分页游标、WHERE 函数运算、IN/EXISTS/JOIN 改写；MyBatis N+1、超大 IN、动态 SQL 左模糊；三个实战优化案例与按 ROI 排序的优化优先级、排查清单。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写"><meta property="og:description" content="梳理慢 SQL 全流程优化：慢的阈值标准（用户接口 200ms、报表 5s、批量 30s）；慢查询日志开启参数、mysqldumpslow 汇总、SHOW PROCESSLIST 与 Druid/Arthas/pt-query-digest 工具；EXPLAIN 的 type/rows/Extra 判读；联合索引最左前缀与建索引口诀；六大索引失效场景（函数操作、隐式类型转换、左模糊、OR 非索引列、违反最左前缀、范围右边列失效）；SELECT *、深分页游标、WHERE 函数运算、IN/EXISTS/JOIN 改写；MyBatis N+1、超大 IN、动态 SQL 左模糊；三个实战优化案例与按 ROI 排序的优化优先级、排查清单。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/mysql-7-slow-sql/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/mysql/">MySQL</a>  <span class="sep">/</span> <span class="current">慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 6 分钟</span> <span>· 1885 字</span> <span class="meta-tags"> <a class="tag" href="/tags/mysql/">#MySQL</a><a class="tag" href="/tags/68051bf4/">#数据库</a><a class="tag" href="/tags/sql/">#慢SQL</a><a class="tag" href="/tags/c2f42bd2/">#性能优化</a><a class="tag" href="/tags/b271e427/">#索引</a><a class="tag" href="/tags/mybatis/">#MyBatis</a> </span> </div> </header>   <p>这一篇从排查到根治梳理慢 SQL 优化：先定位真凶，再用 EXPLAIN 照X光，然后从索引、SQL 写法、代码层、表结构与架构逐层优化。SQL、配置与命令为通用示例。</p>
+<h2 id="一多慢才算慢">一、多慢才算慢</h2>
+<p>慢是相对的，取决于业务场景：</p>
+<ul>
+<li><strong>用户操作类接口</strong>：超过 <strong>200ms</strong>，用户就能感受到卡顿；</li>
+<li><strong>后台报表查询</strong>：超过 <strong>5 秒</strong>，可以考虑优化；</li>
+<li><strong>批量数据处理</strong>：超过 <strong>30 秒</strong>，可能影响其他业务。</li>
+</ul>
+<p>MySQL 默认把超过 <strong>10 秒</strong>的 SQL 记入慢查询日志，实际项目中通常把阈值调到 1~2 秒。</p>
+<blockquote>
+<p>慢 SQL 不是绝对的”慢”，而是”不符合业务预期的慢”。统计报表跑 30 秒可能正常，但登录接口查用户表超过 200ms 就该优化。</p>
+</blockquote>
+<h2 id="二抓住真凶定位慢-sql">二、抓住真凶：定位慢 SQL</h2>
+<h3 id="21-慢查询日志监控摄像头">2.1 慢查询日志：监控摄像头</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 确认是否开启</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">SHOW VARIABLES </span><span style="color:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'slow_query_log%'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">SHOW VARIABLES </span><span style="color:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'long_query_time'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 开启（开发/测试环境建议常开）</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> slow_query_log </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> ON</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> long_query_time </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> log_queries_not_using_indexes </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> ON</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>拿到日志后用 <code>mysqldumpslow</code> 汇总分析：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 按查询时间排序，显示前 10 条</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mysqldumpslow</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -s</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> t</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -t</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> /var/log/mysql/slow.log</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 按出现次数排序</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mysqldumpslow</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -s</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> c</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -t</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> /var/log/mysql/slow.log</span></span></code></pre>
+<p>输出示例：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>Count: 327  Time=5.23s (1710s)  Lock=0.00s (0s)  Rows=50000.0 (16350000)</span></span>
+<span class="line"><span>SELECT * FROM orders WHERE status='PENDING' ORDER BY create_time DESC</span></span></code></pre>
+<p>327 次执行、平均 5.23 秒、扫描 1635 万行——必须优化。</p>
+<blockquote>
+<p>生产环境不要长期开启慢查询日志，会产生大量磁盘 IO；建议只在问题排查时短暂开启，或使用采样记录。</p>
+</blockquote>
+<h3 id="22-当场抓现行">2.2 当场抓现行</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">SHOW FULL PROCESSLIST;</span></span></code></pre>
+<p>重点关注 <code>Time</code> 值很大、<code>State</code> 为 <code>Sending data</code>、<code>Creating sort index</code>、<code>Copying to tmp table</code> 的连接。</p>
+<h3 id="23-java-开发者排障工具">2.3 Java 开发者排障工具</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>用途</th>
+<th>一句话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Druid 连接池</strong></td>
+<td>SQL 监控面板</td>
+<td>阿里出品，内置 Web 监控，慢 SQL 一览无余</td>
+</tr>
+<tr>
+<td><strong>Arthas</strong></td>
+<td>在线诊断</td>
+<td>不重启应用，直接 trace 方法级 SQL 耗时</td>
+</tr>
+<tr>
+<td><strong>pt-query-digest</strong></td>
+<td>慢日志分析</td>
+<td>Percona 出品，生成详细分析报告</td>
+</tr>
+</tbody>
+</table>
+<p><img src="/blog/mysql-7-slow-sql/mysql-7-slow-sql-01.png" alt="慢 SQL 排查流程"></p>
+<h2 id="三explain给-sql-照x光">三、EXPLAIN：给 SQL 照X光</h2>
+<p>抓到慢 SQL 后，<code>EXPLAIN</code> 是诊断核心武器：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">EXPLAIN </span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10086</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>重点关注三列：</p>
+<table>
+<thead>
+<tr>
+<th>列名</th>
+<th>含义</th>
+<th>为什么重要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>type</strong></td>
+<td>访问类型</td>
+<td>决定查询方式，从优到劣</td>
+</tr>
+<tr>
+<td><strong>rows</strong></td>
+<td>预估扫描行数</td>
+<td>越大越慢</td>
+</tr>
+<tr>
+<td><strong>Extra</strong></td>
+<td>额外信息</td>
+<td>是否用了临时表、文件排序</td>
+</tr>
+</tbody>
+</table>
+<h3 id="31-type-访问类型从快到慢">3.1 type 访问类型（从快到慢）</h3>
+<table>
+<thead>
+<tr>
+<th>type 值</th>
+<th>说明</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>const</strong></td>
+<td>主键或唯一索引查一条</td>
+<td><code>WHERE id = 1</code></td>
+</tr>
+<tr>
+<td><strong>eq_ref</strong></td>
+<td>JOIN 时唯一匹配</td>
+<td>JOIN ON 主键</td>
+</tr>
+<tr>
+<td><strong>ref</strong></td>
+<td>非唯一索引查多行</td>
+<td><code>WHERE name = '张三'</code></td>
+</tr>
+<tr>
+<td><strong>range</strong></td>
+<td>索引范围扫描</td>
+<td><code>WHERE id > 10</code></td>
+</tr>
+<tr>
+<td><strong>ALL</strong></td>
+<td>全表扫描</td>
+<td>没走索引，性能灾难</td>
+</tr>
+</tbody>
+</table>
+<p>让 type 至少达到 <code>range</code>，最好 <code>ref</code> 及以上；看到 <code>ALL</code> 立刻警惕——除非表很小，否则就是定时炸弹。</p>
+<h3 id="32-extra-列藏着的关键信息">3.2 Extra 列：藏着的关键信息</h3>
+<table>
+<thead>
+<tr>
+<th>Extra 信息</th>
+<th>含义</th>
+<th>好坏</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Using index</strong></td>
+<td>覆盖索引，不需回表</td>
+<td>优秀</td>
+</tr>
+<tr>
+<td><strong>Using index condition</strong></td>
+<td>索引下推</td>
+<td>良好</td>
+</tr>
+<tr>
+<td><strong>Using temporary</strong></td>
+<td>用了临时表</td>
+<td><strong>需要优化</strong></td>
+</tr>
+<tr>
+<td><strong>Using filesort</strong></td>
+<td>文件排序</td>
+<td><strong>需要优化</strong></td>
+</tr>
+</tbody>
+</table>
+<p><code>Using temporary</code> 和 <code>Using filesort</code> 是慢 SQL 的头号元凶，看到就要打起精神。</p>
+<h2 id="四索引慢-sql-的第一解药">四、索引：慢 SQL 的第一解药</h2>
+<h3 id="41-索引大白话">4.1 索引大白话</h3>
+<p>索引就像书的目录：查”第 5 章”翻目录找页码直接跳过去，而不是从第 1 页逐页翻。</p>
+<h3 id="42-联合索引与最左前缀原则">4.2 联合索引与最左前缀原则</h3>
+<p>建了联合索引 <code>idx_a_b_c (a, b, c)</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 能走索引</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;                    </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;          </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> c </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 不能走索引</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- ❌ 不满足最左前缀</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> c </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- ❌ 不满足最左前缀</span></span></code></pre>
+<p>联合索引像<strong>多层楼梯</strong>：必须从第一级台阶（最左列）开始走，不能直接从中间爬。</p>
+<p><strong>建索引口诀</strong>：区分度高的放前面，查询频率高的放前面，<code>=</code> 条件在 <code>></code>/<code>&#x3C;</code> 条件前面。</p>
+<p><img src="/blog/mysql-7-slow-sql/mysql-7-slow-sql-02.png" alt="最左前缀楼梯"></p>
+<h3 id="43-索引失效的六大经典场景">4.3 索引失效的六大经典场景</h3>
+<p>明明建了索引却不走，问题通常出在 SQL 写法上：</p>
+<table>
+<thead>
+<tr>
+<th>序号</th>
+<th>场景</th>
+<th>错误示例</th>
+<th>正确写法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>对索引列做函数操作</td>
+<td><code>WHERE DATE(create_time) = '2026-01-01'</code></td>
+<td><code>WHERE create_time >= '2026-01-01' AND create_time &#x3C; '2026-01-02'</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>隐式类型转换</td>
+<td><code>WHERE phone = 13800138000</code>（phone 是 varchar）</td>
+<td><code>WHERE phone = '13800138000'</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>LIKE 以 <code>%</code> 开头</td>
+<td><code>WHERE name LIKE '%张三'</code></td>
+<td>避免左模糊，或改用 ES</td>
+</tr>
+<tr>
+<td>4</td>
+<td>OR 连接非索引列</td>
+<td><code>WHERE a = 1 OR b = 2</code>（b 无索引）</td>
+<td>给 b 加索引，或拆成 UNION</td>
+</tr>
+<tr>
+<td>5</td>
+<td>联合索引不满足最左前缀</td>
+<td><code>WHERE b = 1 AND c = 2</code>（索引是 (a,b,c)）</td>
+<td>调整 WHERE 条件顺序</td>
+</tr>
+<tr>
+<td>6</td>
+<td>范围查询右边列失效</td>
+<td><code>WHERE a=1 AND b>10 AND c=3</code>（索引 (a,b,c)）</td>
+<td>c 的条件放应用层过滤</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>隐式类型转换最容易在生产暴雷：自测用数字传进去一看走索引；上线后用户填了奇怪字符串，MySQL 悄悄做类型转换，索引直接失效。</p>
+</blockquote>
+<h2 id="五sql-改写技巧好-sql-是改出来的">五、SQL 改写技巧：好 SQL 是改出来的</h2>
+<h3 id="51-告别-select">5.1 告别 SELECT *</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 低效：无法用覆盖索引，网络传输浪费</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10086</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 优雅：只取需要的列</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id, order_no, amount, </span><span style="color:#D73A49;--shiki-dark:#F97583">status</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10086</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>一天 100 万次请求，每次多传 1KB，一天就是 1GB 额外流量。</p>
+<h3 id="52-深分页优化">5.2 深分页优化</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 经典慢 SQL：先取 100020 条，再丢弃前 100000 条</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">20</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 游标分页：直接用上一页最后一条的 id</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">></span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100000</span><span style="color:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 20</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<h3 id="53-避免在-where-里做函数运算">5.3 避免在 WHERE 里做函数运算</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 错误：索引列套函数</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> DATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(create_time) </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '2026-07-23'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> LEFT</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'abc'</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 正确：把函数移到等号右边</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> create_time </span><span style="color:#D73A49;--shiki-dark:#F97583">>=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '2026-07-23'</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> create_time </span><span style="color:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '2026-07-24'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> name</span><span style="color:#D73A49;--shiki-dark:#F97583"> LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'abc%'</span></span></code></pre>
+<blockquote>
+<p>阿里巴巴开发手册强制规范：严禁在 WHERE 条件中对索引列使用函数或运算。</p>
+</blockquote>
+<h3 id="54-in-vs-exists-vs-join">5.4 IN vs EXISTS vs JOIN</h3>
+<p>简单记忆：<strong>内表大用 EXISTS，内表小用 IN</strong>；大部分情况下 JOIN 比子查询快，因为优化器对 JOIN 的优化手段更多。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 子查询（差）</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">IN</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> users </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> vip_level </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- JOIN（好）</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> o.</span><span style="color:#D73A49;--shiki-dark:#F97583">*</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders o</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">INNER JOIN</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> users u </span><span style="color:#D73A49;--shiki-dark:#F97583">ON</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">user_id</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> u</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">id</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> u</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">vip_level</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<h2 id="六javamybatis-视角代码层面的慢-sql">六、Java/MyBatis 视角：代码层面的慢 SQL</h2>
+<h3 id="61-mybatis-三大元凶">6.1 MyBatis 三大元凶</h3>
+<p><strong>元凶一：N+1 查询</strong></p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">&#x3C;!-- 每条 order 都会触发一次额外查询；100 条订单 = 1 + 100 = 101 次查询 --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">collection</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> property</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"items"</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">            select</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"com.example.dao.OrderItemMapper.selectByOrderId"</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">            column</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"id"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> /></span></span></code></pre>
+<p>解决方案：改用 JOIN 一次查出，或用 MyBatis-Plus 的批量填充。</p>
+<p><strong>元凶二：foreach 拼接超大 IN 列表</strong></p>
+<p><code>ids</code> 有几千个元素时，SQL 解析本身就耗时巨大。建议分批查询，每批不超过 500 个。</p>
+<p><strong>元凶三：动态 SQL 的意外索引失效</strong></p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">if</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> test</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"keyword != null and keyword != ''"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  AND name LIKE CONCAT('%', #{keyword}, '%') </span><span style="color:#6A737D;--shiki-dark:#6A737D">&#x3C;!-- 左模糊，索引失效！ --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">if</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="62-druid--arthas排障黄金搭档">6.2 Druid + Arthas：排障黄金搭档</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  datasource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    druid</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      stat-view-servlet</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        enabled</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        url-pattern</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">/druid/*</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      filter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        stat</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">          enabled</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">          slow-sql-millis</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">1000</span><span style="color:#6A737D;--shiki-dark:#6A737D"> # 超过 1 秒的 SQL 标记为慢 SQL</span></span></code></pre>
+<p>启动后访问 <code>http://localhost:8080/druid/sql.html</code>，实时查看 SQL 执行次数、平均耗时、最大耗时。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># Arthas 在线追踪，不重启应用</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">trace</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> com.example.dao.OrderMapper</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> selectByUserId</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '#cost > 100'</span></span></code></pre>
+<p>SQL 日志发现问题、Druid 持续追踪、Arthas 精准定位——三件套搭配，慢 SQL 无所遁形。</p>
+<h2 id="七实战案例三个经典优化全过程">七、实战案例：三个经典优化全过程</h2>
+<h3 id="案例一分页查询-8-秒--15-毫秒">案例一：分页查询 8 秒 → 15 毫秒</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 原始 SQL：type=ALL，rows=200 万</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_detail</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> status</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'PAID'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> create_time </span><span style="color:#D73A49;--shiki-dark:#F97583">DESC</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 500000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">20</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 优化：建索引 + 游标分页</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_detail </span><span style="color:#D73A49;--shiki-dark:#F97583">ADD</span><span style="color:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> idx_status_time (</span><span style="color:#D73A49;--shiki-dark:#F97583">status</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, create_time);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_detail</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> status</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'PAID'</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">></span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 500123</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 20</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p><strong>效果：8 秒 → 15 毫秒，提升约 500 倍。</strong></p>
+<h3 id="案例二join-查询-3-秒--30-毫秒">案例二：JOIN 查询 3 秒 → 30 毫秒</h3>
+<p>诊断：<code>orders.create_time</code> 未建索引，三表关联产生大量中间结果，Extra = <code>Using temporary; Using filesort</code>。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">ADD</span><span style="color:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> idx_create_time (create_time);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_items </span><span style="color:#D73A49;--shiki-dark:#F97583">ADD</span><span style="color:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> idx_order_id (order_id);</span></span></code></pre>
+<p><strong>效果：3 秒 → 30 毫秒。</strong></p>
+<h3 id="案例三统计-sql-30-秒--200-毫秒">案例三：统计 SQL 30 秒 → 200 毫秒</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 原始 SQL：DATE(create_time) 对索引列做了函数操作</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> DATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(create_time) </span><span style="color:#D73A49;--shiki-dark:#F97583">AS</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> dt, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">COUNT</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">*</span><span style="color:#24292E;--shiki-dark:#E1E4E8">), </span><span style="color:#005CC5;--shiki-dark:#79B8FF">SUM</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(amount)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> create_time </span><span style="color:#D73A49;--shiki-dark:#F97583">></span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '2025-01-01'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="color:#D73A49;--shiki-dark:#F97583"> DATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(create_time);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 优化：加计算列 + 索引</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">ADD</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> COLUMN order_date </span><span style="color:#D73A49;--shiki-dark:#F97583">DATE</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  GENERATED</span><span style="color:#D73A49;--shiki-dark:#F97583"> ALWAYS</span><span style="color:#D73A49;--shiki-dark:#F97583"> AS</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#D73A49;--shiki-dark:#F97583">DATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(create_time)) STORED;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="color:#D73A49;--shiki-dark:#F97583">ADD</span><span style="color:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> idx_order_date_amount (order_date, amount);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_date, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">COUNT</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">*</span><span style="color:#24292E;--shiki-dark:#E1E4E8">), </span><span style="color:#005CC5;--shiki-dark:#79B8FF">SUM</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(amount)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orders</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_date </span><span style="color:#D73A49;--shiki-dark:#F97583">></span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '2025-01-01'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_date;</span></span></code></pre>
+<p><strong>效果：30 秒 → 200 毫秒。</strong></p>
+<p>数据量特别大（几千万行以上）时，可考虑建汇总表：每天凌晨定时任务把前一天数据汇总好，业务查询直接查汇总表，毫秒级响应。</p>
+<h2 id="八优化思维框架">八、优化思维框架</h2>
+<p>按投入产出比排序的优化优先级：</p>
+<ol>
+<li><strong>加索引 / 修正索引</strong>（ROI 最高，5 分钟可能提升 100 倍）；</li>
+<li><strong>改写 SQL</strong>（避免 <code>SELECT *</code>、优化分页、修正左模糊）；</li>
+<li><strong>优化表结构</strong>（选对字段类型、适当冗余）；</li>
+<li><strong>调整数据库参数</strong>（buffer pool、连接数）；</li>
+<li><strong>架构层面兜底</strong>（读写分离、分库分表、引入缓存）。</li>
+</ol>
+<p><img src="/blog/mysql-7-slow-sql/mysql-7-slow-sql-03.png" alt="优化优先级阶梯"></p>
+<h2 id="九慢-sql-排查清单">九、慢 SQL 排查清单</h2>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>做什么</th>
+<th>用什么工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>确认有没有慢 SQL</td>
+<td>慢查询日志 / Druid 监控 / <code>SHOW PROCESSLIST</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>分析执行计划</td>
+<td><code>EXPLAIN</code> / <code>EXPLAIN ANALYZE</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>检查索引使用情况</td>
+<td>EXPLAIN 的 type、key、Extra 列</td>
+</tr>
+<tr>
+<td>4</td>
+<td>判断是否索引失效</td>
+<td>对照六大索引失效场景逐一排查</td>
+</tr>
+<tr>
+<td>5</td>
+<td>检查 SQL 写法</td>
+<td><code>SELECT *</code> / 深分页 / 子查询 / 函数运算</td>
+</tr>
+<tr>
+<td>6</td>
+<td>检查 Java 层面</td>
+<td>MyBatis 日志 / Arthas trace / Druid 监控</td>
+</tr>
+<tr>
+<td>7</td>
+<td>检查表结构与参数</td>
+<td>字段类型 / 冗余设计 / <code>buffer_pool_size</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td>验证优化效果</td>
+<td>再次 EXPLAIN + 实际执行计时</td>
+</tr>
+</tbody>
+</table>
+<h2 id="十小结">十、小结</h2>
+<p>慢 SQL 优化的核心是一套”排查肌肉记忆”：先用日志和监控定位，再用 EXPLAIN 判断执行计划，先榨干索引与 SQL 写法，最后才动表结构、参数和架构。</p>
+<p>三句最关键的认知：</p>
+<ol>
+<li><strong>先定位再动手</strong>：慢查询日志、PROCESSLIST、Druid、Arthas 各管一段，避免凭感觉改 SQL；</li>
+<li><strong>索引是第一解药，但最容易失效</strong>：遵守最左前缀，避开函数运算、隐式转换、左模糊、OR 非索引列与范围右边列；</li>
+<li><strong>改写 SQL 收益高</strong>：去掉 <code>SELECT *</code>、深分页游标化、JOIN 替代子查询，能用覆盖索引就不回表。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳；阈值、分批大小与汇总表策略需结合实际业务量和压测结果调整。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/mysql-7-slow-sql/">https://zhanzhenguan.github.io/blog/mysql-7-slow-sql/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-2-index/">MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</a> <p>整理 MySQL 索引原理与优化：索引作为有序数据结构减少磁盘 I/O；B+Tree 非叶子节点只存键、叶子节点双向链表相连的结构与四个核心优势、千万级表 2-3 层树高的 I/O 估算；聚簇索引叶子存整行、二级索引叶子存主键值；回表与覆盖索引；联合索引最左前缀原则与索引下推（MySQL 5.6+）；EXPLAIN 的 type/Extra/key/rows 判读；深分页延迟关联、JOIN 小表驱动大表、ORDER BY 索引排序、建索引六要六不要与 COUNT 优化。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-8-internals/">MySQL 七个底层机制：优化器成本、索引下推、覆盖索引、filesort、深分页、MVCC 与在线 DDL</a> <p>基于 MySQL 8.0 梳理写 SQL 时背后发生的底层决策：优化器成本模型（磁盘/内存/CPU 成本）、统计信息采样误差与直方图、EXPLAIN ANALYZE 估算与实测对比；索引条件下推 ICP 的价值、生效边界与常见误读；覆盖索引与 Using index、主键天然覆盖、长主键放大二级索引；filesort 内存/落盘本质、索引有序性复用、8.0.20 废弃 max_length_for_sort_data、降序索引；深分页 LIMIT offset,n 原理、延迟关联与游标分页取舍；MVCC 版本链与 ReadView、RC/RR 快照时机、间隙锁性质与插入意向锁；在线 DDL 的 COPY/INPLACE/INSTANT 算法、INSTANT 版本边界与 64 行版本上限、MDL 锁事故链、pt-osc 与 gh-ost 影子表方案。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-1-basics/">MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</a> <p>整理 Java 开发视角的 MySQL 基础认知：知识体系图谱、Server 层与存储引擎层分层架构、一条 SELECT 的连接器/分析器/优化器/执行器流程、MySQL 8.0 移除查询缓存、UPDATE 涉及的 Buffer Pool 与 undo/redo/binlog 日志链路、InnoDB 与 MyISAM 在事务/行锁/外键/崩溃恢复/MVCC/聚簇索引/COUNT(*) 上的差异，以及生产环境为何默认选 InnoDB。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/mysql-6-engine-compare/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">InnoDB 与 MyISAM 存储引擎区别：事务、锁、索引结构、崩溃恢复</div> </a> <a class="next" href="/blog/mysql-8-internals/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">MySQL 七个底层机制：优化器成本、索引下推、覆盖索引、filesort、深分页、MVCC 与在线 DDL</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写","description":"梳理慢 SQL 全流程优化：慢的阈值标准（用户接口 200ms、报表 5s、批量 30s）；慢查询日志开启参数、mysqldumpslow 汇总、SHOW PROCESSLIST 与 Druid/Arthas/pt-query-digest 工具；EXPLAIN 的 type/rows/Extra 判读；联合索引最左前缀与建索引口诀；六大索引失效场景（函数操作、隐式类型转换、左模糊、OR 非索引列、违反最左前缀、范围右边列失效）；SELECT *、深分页游标、WHERE 函数运算、IN/EXISTS/JOIN 改写；MyBatis N+1、超大 IN、动态 SQL 左模糊；三个实战优化案例与按 ROI 排序的优化优先级、排查清单。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/mysql-7-slow-sql/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

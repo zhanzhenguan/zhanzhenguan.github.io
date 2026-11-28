@@ -1,0 +1,247 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 数据访问基础：Spring Data 概念、H2 内存数据库依赖与配置、schema.sql/data.sql 初始化、H2 Web 控制台；Druid 数据源切换、核心配置项、监控面板、starter 自动配置，以及动态数据源切换原理。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源"><meta property="og:description" content="整理 Spring Boot 数据访问基础：Spring Data 概念、H2 内存数据库依赖与配置、schema.sql/data.sql 初始化、H2 Web 控制台；Druid 数据源切换、核心配置项、监控面板、starter 自动配置，以及动态数据源切换原理。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-data/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 5 分钟</span> <span>· 1813 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/ea00a27d/">#数据访问</a><a class="tag" href="/tags/h2/">#H2</a><a class="tag" href="/tags/druid/">#Druid</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li class="current">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源（本文）</li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第三部分，聚焦数据访问：先整合 H2 内存数据库用于本地开发与测试，再接入 Druid 连接池作为数据源，梳理其配置项、监控能力与动态数据源切换原理。代码为通用示例，敏感信息一律用占位符。</p>
+<h2 id="一基本概念">一、基本概念</h2>
+<p>Spring Data 是 Spring 用来解决数据访问问题的一揽子解决方案，属于伞形项目，涵盖大量关系型与非关系型数据库的数据访问方案，使开发者可以快速使用传统数据访问技术与新技术。后续文章会再展开 MyBatis、MyBatis-Plus 的整合。</p>
+<h2 id="二整合-h2-数据库">二、整合 H2 数据库</h2>
+<p>H2 是一款轻量级 Java 内嵌数据库，支持内存模式与文件模式，适合本地开发、单元测试与演示场景。</p>
+<h3 id="21-添加依赖">2.1 添加依赖</h3>
+<p>引入 JPA 支持与 H2 数据库驱动（H2 以 <code>runtime</code> 作用域引入）：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-data-jpa&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>com.h2database&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>h2&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">scope</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>runtime&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">scope</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="22-数据源配置">2.2 数据源配置</h3>
+<p>默认情况下，Spring Boot 会用用户名 <code>sa</code>、空密码连接内存数据库。可在 <code>application.properties</code> 或 YAML 中覆盖这些参数：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="properties"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.datasource.url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=jdbc:h2:mem:testdb</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.datasource.username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=sa</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.datasource.password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.datasource.driver-class-name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=org.h2.Driver</span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  datasource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">jdbc:h2:mem:testdb</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">sa</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    driver-class-name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">org.h2.Driver</span></span></code></pre>
+<p>内存数据库在应用重启后会丢失数据；改用基于文件的存储即可持久化，把 <code>url</code> 指向文件路径：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="properties"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.datasource.url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=jdbc:h2:file:./data/demo</span></span></code></pre>
+<h3 id="23-初始化数据库">2.3 初始化数据库</h3>
+<p>在 <code>src/main/resources</code> 下添加脚本：</p>
+<ul>
+<li><code>schema.sql</code>：建表语句；</li>
+<li><code>data.sql</code>：初始化示例数据。</li>
+</ul>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- schema.sql</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> IF</span><span style="color:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="color:#D73A49;--shiki-dark:#F97583"> EXISTS</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> countries (</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    id   </span><span style="color:#D73A49;--shiki-dark:#F97583">INT</span><span style="color:#D73A49;--shiki-dark:#F97583"> PRIMARY KEY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> AUTO_INCREMENT,</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    name</span><span style="color:#D73A49;--shiki-dark:#F97583"> VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">100</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- data.sql</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">INSERT INTO</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> countries (</span><span style="color:#D73A49;--shiki-dark:#F97583">name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">VALUES</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#032F62;--shiki-dark:#9ECBFF">'China'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">), (</span><span style="color:#032F62;--shiki-dark:#9ECBFF">'Japan'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<p>Spring Boot 会自动获取这些脚本，在嵌入式内存数据库（如 H2）中执行，适合测试或初始化。可通过 <code>spring.sql.init.mode</code> 控制初始化行为：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="properties"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># always：始终执行；embedded：仅嵌入式库执行；never：禁用</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.sql.init.mode</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=embedded</span></span></code></pre>
+<h3 id="24-访问-h2-控制台">2.4 访问 H2 控制台</h3>
+<p>H2 自带嵌入式 Web 控制台，用于浏览库表与运行 SQL。默认不启用，需要在配置中打开：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="properties"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.h2.console.enabled</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=true</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.h2.console.path</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=/h2-console</span></span></code></pre>
+<p>启动应用后访问 <code>http://localhost:8080/h2-console</code>，用配置文件中的凭证登录。连接后页面左侧列出所有表，右侧有 SQL 查询输入框，控制台带 SQL 关键字自动补全，适合直观检查数据或直接执行原始 SQL。</p>
+<p>控制台相关配置：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="properties"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 控制台路径，相对于应用地址与端口</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.h2.console.path</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=/h2-console</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 是否输出 Trace 信息</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.h2.console.settings.trace</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=false</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 是否允许远程访问（生产环境务必关闭）</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.h2.console.settings.web-allow-others</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=false</span></span></code></pre>
+<blockquote>
+<p>注意：<code>web-allow-others</code> 仅在本机开发时考虑放开；生产环境不要暴露 H2 控制台。</p>
+</blockquote>
+<p><img src="/blog/spring-boot-data/spring-boot-data-01.png" alt="H2 Web 控制台界面"></p>
+<h2 id="三整合-druid-数据源">三、整合 Druid 数据源</h2>
+<h3 id="31-默认数据源与切换方式">3.1 默认数据源与切换方式</h3>
+<p>Spring Boot 各版本默认数据源：</p>
+<ul>
+<li>2.0 之前：<code>org.apache.tomcat.jdbc.pool.DataSource</code>；</li>
+<li>2.0 及之后：<code>com.zaxxer.hikari.HikariDataSource</code>。</li>
+</ul>
+<p>切换数据源只需在配置文件中通过 <code>spring.datasource.type</code> 指定 <code>DataSource</code> 接口实现类：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="properties"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.datasource.type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=com.alibaba.druid.pool.DruidDataSource</span></span></code></pre>
+<h3 id="32-druid-的主要优势">3.2 Druid 的主要优势</h3>
+<ul>
+<li><strong>监控能力强</strong>：内置 Web 控制台实时查看连接池状态、SQL 执行时间/次数/错误统计、慢 SQL 与执行分布；提供活跃/空闲连接数、等待线程数、事务提交回滚次数等统计信息；</li>
+<li><strong>连接池性能好</strong>：较优的连接池算法降低获取开销，支持 <code>PreparedStatement</code> 缓存，具备智能连接回收机制，减少连接泄漏与 GC 压力；</li>
+<li><strong>扩展功能丰富</strong>：SQL 防火墙（wall）、多数据源支持，便于实现读写分离、分库分表、多租户隔离；</li>
+<li><strong>集成便捷</strong>：通过 Spring Boot Starter 自动配置，零侵入接入，兼容 Spring 事务管理。</li>
+</ul>
+<h3 id="33-常用配置项">3.3 常用配置项</h3>
+<p>Druid 配置以 <code>spring.datasource.druid.*</code> 为前缀，常用参数如下：</p>
+<table>
+<thead>
+<tr>
+<th>配置项</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>多数据源时用于区分监控的名称</td>
+</tr>
+<tr>
+<td><code>url</code></td>
+<td>数据库连接地址，随数据库类型而定</td>
+</tr>
+<tr>
+<td><code>username</code> / <code>password</code></td>
+<td>连接用户名 / 密码（示例用占位符，勿填真实凭证）</td>
+</tr>
+<tr>
+<td><code>driverClassName</code></td>
+<td>驱动类名；不配置时 Druid 根据 <code>url</code> 自动识别</td>
+</tr>
+<tr>
+<td><code>initialSize</code></td>
+<td>初始化时建立的物理连接个数</td>
+</tr>
+<tr>
+<td><code>maxActive</code></td>
+<td>最大连接池数量</td>
+</tr>
+<tr>
+<td><code>minIdle</code></td>
+<td>最小连接池数量</td>
+</tr>
+<tr>
+<td><code>maxIdle</code></td>
+<td>已废弃，配置无效</td>
+</tr>
+<tr>
+<td><code>maxWait</code></td>
+<td>获取连接时最大等待时间（毫秒）；配置后默认启用公平锁，可用 <code>useUnfairLock=true</code> 切换非公平锁</td>
+</tr>
+<tr>
+<td><code>poolPreparedStatements</code></td>
+<td>是否缓存 <code>PreparedStatement</code>（PSCache）；MySQL 下建议关闭，Oracle 等支持游标的数据库提升明显</td>
+</tr>
+<tr>
+<td><code>maxPoolPreparedStatementPerConnectionSize</code></td>
+<td>单个连接的 PSCache 大小；大于 0 时自动开启 PSCache</td>
+</tr>
+<tr>
+<td><code>validationQuery</code></td>
+<td>检测连接是否有效的 SQL（常用 <code>select 'x'</code>）；为 <code>null</code> 时相关检测不生效</td>
+</tr>
+<tr>
+<td><code>validationQueryTimeout</code></td>
+<td>连接检测超时时间（秒）</td>
+</tr>
+<tr>
+<td><code>testOnBorrow</code></td>
+<td>申请连接时检测有效性，会降低性能</td>
+</tr>
+<tr>
+<td><code>testOnReturn</code></td>
+<td>归还连接时检测有效性，会降低性能</td>
+</tr>
+<tr>
+<td><code>testWhileIdle</code></td>
+<td>建议设为 <code>true</code>：空闲超阈值时才检测，不影响性能且保证安全</td>
+</tr>
+<tr>
+<td><code>keepAlive</code></td>
+<td><code>minIdle</code> 以内的空闲连接超过 <code>minEvictableIdleTimeMillis</code> 后执行保活操作</td>
+</tr>
+<tr>
+<td><code>timeBetweenEvictionRunsMillis</code></td>
+<td>Destroy 线程检测连接的间隔时间，也是 <code>testWhileIdle</code> 的判断依据</td>
+</tr>
+<tr>
+<td><code>minEvictableIdleTimeMillis</code></td>
+<td>连接保持空闲而不被驱逐的最小时间</td>
+</tr>
+<tr>
+<td><code>connectionInitSqls</code></td>
+<td>物理连接初始化时执行的 SQL</td>
+</tr>
+<tr>
+<td><code>exceptionSorter</code></td>
+<td>数据库抛出不可恢复异常时抛弃连接</td>
+</tr>
+<tr>
+<td><code>filters</code></td>
+<td>别名方式配置扩展插件：<code>stat</code> 监控统计、<code>wall</code> SQL 防火墙、<code>log4j</code>/<code>slf4j</code> 日志</td>
+</tr>
+<tr>
+<td><code>proxyFilters</code></td>
+<td>类型为 <code>List&#x3C;Filter></code>；与 <code>filters</code> 同时配置时为组合关系，并非替换</td>
+</tr>
+</tbody>
+</table>
+<h3 id="34-使用-druid-starter">3.4 使用 Druid Starter</h3>
+<p>Druid 官方提供了 Spring Boot 启动器，引入后即可自动装配，无须再写配置类注入 Bean。</p>
+<p><strong>1. 添加依赖</strong>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>com.alibaba&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>druid-spring-boot-starter&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<p><strong>2. 编写配置</strong>：默认配置以 <code>spring.datasource.druid.*</code> 开头，直接在配置文件中填写即可：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  datasource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">com.alibaba.druid.pool.DruidDataSource</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">jdbc:mysql://localhost:3306/demo?useUnicode=true&#x26;characterEncoding=utf8&#x26;serverTimezone=Asia/Shanghai</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">demo</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${DB_PASSWORD:change-me}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    driver-class-name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">com.mysql.cj.jdbc.Driver</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    druid</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      initial-size</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">5</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      min-idle</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">5</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      max-active</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">20</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      max-wait</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">60000</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      test-while-idle</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      validation-query</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">select 'x'</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      filters</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">stat,wall</span></span></code></pre>
+<p><strong>3. 启动测试</strong>：编写测试类或接口验证能否正常读取自定义配置。引入监控插件后，访问 <code>http://localhost:8080/druid</code> 可进入 Druid 默认监控控制台。</p>
+<p><img src="/blog/spring-boot-data/spring-boot-data-02.png" alt="Druid 监控控制台"></p>
+<h3 id="35-自动配置核心类druiddatasourceautoconfigure">3.5 自动配置核心类：DruidDataSourceAutoConfigure</h3>
+<p><code>DruidDataSourceAutoConfigure</code> 是 Druid 连接池在 Spring Boot 中的自动配置核心类，负责自动创建和配置 Druid 数据源。关键注解：</p>
+<ul>
+<li><strong><code>@ConditionalOnClass</code></strong>：只有 classpath 中存在 <code>DruidDataSource</code> 类时才激活自动配置，确保引入 Druid 依赖后才装配；</li>
+<li><strong><code>@AutoConfigureBefore</code></strong>：在 Spring Boot 默认的 <code>DataSourceAutoConfiguration</code> 之前执行，优先使用 Druid 配置覆盖默认数据源；</li>
+<li><strong><code>@EnableConfigurationProperties</code></strong>：启用配置属性绑定，<code>DruidStatProperties</code> 绑定 <code>spring.datasource.druid.*</code>，<code>DataSourceProperties</code> 绑定 <code>spring.datasource.*</code>。</li>
+</ul>
+<p>核心配置方法负责创建主数据源，<code>DruidDataSourceWrapper</code> 作为内部类封装数据源实例。</p>
+<h3 id="36-动态数据源上下文dynamicdatasourcecontextholder">3.6 动态数据源上下文：DynamicDataSourceContextHolder</h3>
+<p><code>DynamicDataSourceContextHolder</code> 是动态数据源组件的核心工具类，用 <strong>ThreadLocal</strong> 存储和管理当前线程的数据源标识，保证多线程环境下各线程独立切换、互不干扰。</p>
+<p>主要方法：</p>
+<ul>
+<li><code>setDataSourceType(String dataSourceType)</code>：把数据源 key 存入当前线程 ThreadLocal；</li>
+<li><code>getDataSourceType()</code>：获取当前线程绑定的数据源标识；</li>
+<li><code>clearDataSourceType()</code>：清除当前线程的数据源上下文，避免内存泄漏，操作完成后调用。</li>
+</ul>
+<p><strong>工作原理</strong>：该类通常配合 <code>DynamicDataSource</code> 与 <code>AbstractRoutingDataSource</code> 使用。执行数据库操作时，<code>AbstractRoutingDataSource</code> 调用 <code>determineCurrentLookupKey()</code>，内部通过 <code>DynamicDataSourceContextHolder.getDataSourceType()</code> 取出当前线程应使用的数据源标识，从而路由到目标数据源。这种设计支持运行时按业务需要灵活切换数据源，适用于读写分离、多租户等场景。</p>
+<p><img src="/blog/spring-boot-data/spring-boot-data-03.png" alt="动态数据源切换流程"></p>
+<h2 id="四小结">四、小结</h2>
+<ul>
+<li>Spring Data 是覆盖关系型与非关系型数据库的数据访问伞形方案；H2 适合本地开发与测试，分内存模式与文件模式，可通过 <code>schema.sql</code>/<code>data.sql</code> 自动初始化；</li>
+<li>Spring Boot 2.0+ 默认 HikariCP，指定 <code>spring.datasource.type</code> 即可切换为 Druid；Druid 优势在监控、连接池性能、SQL 防火墙与多数据源支持；</li>
+<li>Druid Starter 通过 <code>spring.datasource.druid.*</code> 自动装配，监控控制台默认挂在 <code>/druid</code>；</li>
+<li>动态数据源基于 ThreadLocal 上下文 + <code>AbstractRoutingDataSource</code> 路由 key 实现，支撑读写分离、多租户等场景。</li>
+</ul>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏，示例中的账号、密码均为占位符。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-data/">https://zhanzhenguan.github.io/blog/spring-boot-data/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-cors/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</div> </a> <a class="next" href="/blog/spring-boot-flowable/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源","description":"整理 Spring Boot 数据访问基础：Spring Data 概念、H2 内存数据库依赖与配置、schema.sql/data.sql 初始化、H2 Web 控制台；Druid 数据源切换、核心配置项、监控面板、starter 自动配置，以及动态数据源切换原理。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-data/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

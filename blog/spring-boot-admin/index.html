@@ -1,0 +1,274 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级"><meta property="og:description" content="整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-admin/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 11 分钟</span> <span>· 3305 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/admin/">#Admin</a><a class="tag" href="/tags/9aff6241/">#监控</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li class="current">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级（本文）</li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第二十四部分，应用监控的可视化篇。每个 Spring Boot 应用自带 Actuator 暴露监控端点，但 Actuator 输出的是 JSON 接口；应用多了之后，Spring Boot Admin（SBA）把这些数据聚合起来，提供统一 Web 管理界面。技术栈：Spring Boot 3.5.16、JDK 17、Spring Boot Admin 3.5.11。代码为通用示例，敏感信息按实际环境脱敏。</p>
+<h2 id="一spring-boot-admin-是什么">一、Spring Boot Admin 是什么</h2>
+<h3 id="11-一句话定位">1.1 一句话定位</h3>
+<p>Actuator 是<strong>数据提供方</strong>，负责采集和暴露监控端点；Spring Boot Admin 是<strong>可视化平台</strong>，负责拉取、聚合、展示这些数据。SBA 界面里可以看应用列表、健康状态、JVM 内存、线程、日志级别调整。</p>
+<h3 id="12-架构server--client">1.2 架构：Server + Client</h3>
+<p>SBA 由两部分组成：</p>
+<ol>
+<li><strong>Admin Server</strong>：独立的 Spring Boot 应用，提供 Web 界面，接收各应用注册，轮询它们的 Actuator 端点并聚合展示；</li>
+<li><strong>Admin Client</strong>：集成在每个被监控的业务应用里，启动后向 Server 主动注册，并让 Server 能访问自己的 Actuator 端点。</li>
+</ol>
+<p>工作流程：启动 Server → 业务应用集成 Actuator 与 Client → Client 向 Server 注册 → Server 轮询拉取数据 → 管理人员在页面上查看和操作。除 Client 主动注册外，SBA 也支持通过 Eureka、Consul 等服务发现机制接入（微服务环境常用），本文用最直接的 Client 注册方式跑通核心链路。</p>
+<p><img src="/blog/spring-boot-admin/spring-boot-admin-01.png" alt="SBA Server/Client 架构"></p>
+<h3 id="13-适用场景与边界">1.3 适用场景与边界</h3>
+<p>SBA 适合中小型项目的统一监控、微服务应用状态总览、开发测试环境故障排查。但要说明边界：官方文档明确表示，SBA <strong>不是</strong> Grafana、Datadog 这类专业可观测平台的替代品——它不提供历史数据存储、告警规则、分布式追踪能力，擅长的是「轻量的、面向应用本身的实时监控与管理界面」。生产环境常见组合：SBA 看实时状态 + Prometheus/Grafana 看趋势和告警。</p>
+<h2 id="二版本基线">二、版本基线</h2>
+<h3 id="21-sba-版本与-spring-boot-版本对应">2.1 SBA 版本与 Spring Boot 版本对应</h3>
+<table>
+<thead>
+<tr>
+<th>SBA 版本线</th>
+<th>对应 Spring Boot</th>
+<th>能否用于本项目</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.x</td>
+<td>Spring Boot 2.x</td>
+<td>否（我们要 Boot 3）</td>
+</tr>
+<tr>
+<td>3.5.x</td>
+<td>Spring Boot 3.5.x</td>
+<td><strong>是</strong></td>
+</tr>
+<tr>
+<td>4.x（当前 latest 4.1.5）</td>
+<td>Spring Boot 4.x</td>
+<td>否（Boot 3 项目不兼容）</td>
+</tr>
+</tbody>
+</table>
+<p>容易踩的坑：Maven Central 上 SBA 的 <code>latest</code> 标签目前指向 <strong>4.1.5</strong>，那是给 Spring Boot 4 用的。<strong>Boot 3 项目必须选 3.5.x 线</strong>。</p>
+<h3 id="22-选型结论">2.2 选型结论</h3>
+<p>本项目固定：<strong>Spring Boot 3.5.16 + Spring Boot Admin 3.5.11</strong>。核实依据：Maven Central <code>de.codecentric:spring-boot-admin-starter-server</code> 的 3.5.x 线最新为 3.5.11；其依赖 <code>spring-boot-starter</code> 版本为 3.5.14，与 3.5.16 同属 3.5.x 线，兼容；官方安装文档给出的 Quick Start 即为 <code>spring-boot-admin-starter-server 3.5.x</code> 用法。</p>
+<h2 id="三整体设计与工程结构">三、整体设计与工程结构</h2>
+<p>Server 和 Client 是两个独立的 Spring Boot 应用（端口不同、职责不同），所以用 Maven 聚合工程管理，一个仓库两个模块。SBA 版本只在聚合 POM 里定义一次，两个模块通过 <code>${spring-boot-admin.version}</code> 引用，避免版本漂移。</p>
+<h2 id="四搭建-admin-server">四、搭建 Admin Server</h2>
+<h3 id="41-server-模块依赖">4.1 server 模块依赖</h3>
+<p><code>spring-boot-admin-starter-server</code> 内部已经传递依赖了 <code>spring-boot-admin-server</code>、<code>spring-boot-admin-server-ui</code>（整个 Web 界面）、Thymeleaf 和 Actuator。显式写 <code>spring-boot-starter-web</code> 是官方 Quick Start 的推荐做法，让 Servlet 容器来源更清晰。</p>
+<h3 id="42-启动类一个注解开启-server">4.2 启动类：一个注解开启 Server</h3>
+<p>Server 端 Java 代码就这一个类，<code>@EnableAdminServer</code> 通过 Spring 自动发现机制加载全部所需配置：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">SpringBootApplication</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">EnableAdminServer</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> AdminServerApplication</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">[] </span><span style="color:#E36209;--shiki-dark:#FFAB70">args</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        SpringApplication.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(AdminServerApplication.class, args);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="43-第一个坑thymeleaf-模板位置-warn">4.3 第一个坑：Thymeleaf 模板位置 WARN</h3>
+<p><code>spring.thymeleaf.check-template-location: false</code> 是实测踩出来的。SBA 的 UI 页面由 <code>spring-boot-admin-server-ui</code> 自己打包提供，并不从 <code>classpath:/templates/</code> 加载，但 Boot 的 Thymeleaf 自动配置启动时仍会检查这个目录，于是打出 <code>Cannot find template location</code> 的 WARN。按提示关掉检查即可，WARN 消失，UI 完全不受影响。</p>
+<h2 id="五搭建-admin-client">五、搭建 Admin Client</h2>
+<h3 id="51-client-模块依赖">5.1 client 模块依赖</h3>
+<p>注意客户端用的是 <strong>starter-client</strong>，与 server 端是两个不同坐标，别引反了：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>de.codecentric&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-admin-starter-client&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="52-注册与端点暴露配置">5.2 注册与端点暴露配置</h3>
+<p>逐条说明为什么这么配：</p>
+<ul>
+<li><strong><code>spring.boot.admin.client.url</code></strong>：注册目标，Client 启动后按固定周期（默认 10 秒）向它 POST 注册信息，失败自动重试；</li>
+<li><strong><code>management.endpoints.web.exposure.include: "*"</code></strong>：Boot 2 之后 Actuator 默认只暴露 <code>health</code>，不放开的话 Server 拿不到 JVM、日志等数据；<code>"*"</code> 在 YAML 里必须加引号；</li>
+<li><strong><code>show-details: always</code></strong>：默认 <code>never</code>，不开的话健康接口对外只有 <code>{"status":"UP"}</code>，组件级详情（磁盘、自定义指示器）全看不到；</li>
+<li><strong><code>management.info.env.enabled: true</code></strong>：Boot 2.6 起 info 端点的 env 内容默认关闭，不开则界面 Info 页缺信息；</li>
+<li><strong><code>info.app.*</code></strong>：静态应用信息，注册后直接展示在详情页。</li>
+</ul>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  boot</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    admin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      client</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">http://localhost:8080</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">management</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  endpoints</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    web</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      exposure</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        include</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"*"</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  endpoint</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    health</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      show-details</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">always</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    env</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      enabled</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  app</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">admin-client</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">1.0.0</span></span></code></pre>
+<h3 id="53-客户端启动类">5.3 客户端启动类</h3>
+<p>Client 端连注解都不用加——引入 starter + 配置 Server 地址，注册就自动完成。</p>
+<h2 id="六写业务代码让监控有内容可看">六、写业务代码，让监控有内容可看</h2>
+<p>光注册上去，界面上只有空壳。给 Client 加一组真实业务：订单 CRUD 提供流量和日志，一个可切换的自定义健康指示器演示状态联动。</p>
+<h3 id="61-统一返回与异常处理">6.1 统一返回与异常处理</h3>
+<p>这里的 <code>basePackages = "com.example.adminclient.controller"</code> 是重点。不加限定的话，<code>@ExceptionHandler(Exception.class)</code> 会把 Actuator 端点、静态资源抛出的框架级异常（媒体类型协商失败、404 之类）包装成业务 500 + ERROR 堆栈，日志全是噪音。限定到业务包后，框架的异常交还框架处理。</p>
+<h3 id="62-订单-crud">6.2 订单 CRUD</h3>
+<p><code>list()</code> 和 <code>detail()</code> 里用 <code>log.debug</code>——后面演示日志动态调级时，把级别调成 DEBUG，这些日志就会开始出现，效果直观。</p>
+<h3 id="63-自定义健康指示器模拟外部依赖">6.3 自定义健康指示器：模拟外部依赖</h3>
+<p>真实系统里健康状态往往由外部依赖决定：数据库连不上、支付通道超时，应用就该从 UP 变 DOWN。教程里用内存开关模拟这个链路：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Component</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"payment-channel"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> PaymentChannelHealthIndicator</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> HealthIndicator</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> volatile</span><span style="color:#D73A49;--shiki-dark:#F97583"> boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> channelUp </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> true</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Health </span><span style="color:#6F42C1;--shiki-dark:#B392F0">health</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> channelUp </span><span style="color:#D73A49;--shiki-dark:#F97583">?</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Health.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">up</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Health.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">down</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> setChannelUp</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">boolean</span><span style="color:#E36209;--shiki-dark:#FFAB70"> up</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        this</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.channelUp </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> up;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>@Component("payment-channel")</code> 的名字就是它在 <code>/actuator/health</code> components 里的 key。</p>
+<h2 id="七启动与注册验证">七、启动与注册验证</h2>
+<h3 id="71-启动顺序">7.1 启动顺序</h3>
+<p>先 Server 后 Client（Client 支持失败重试，顺序反了也能自己注册上，见第十三章）。</p>
+<h3 id="72-确认注册成功的三种方式">7.2 确认注册成功的三种方式</h3>
+<ol>
+<li><strong>看 Client 日志</strong>：出现注册成功记录；</li>
+<li><strong>查 Server 的注册 API</strong>：<code>/instances</code> 返回实例列表；</li>
+<li><strong>打开管理界面</strong>：浏览器访问 Server 地址，Wallboard 上出现 <code>admin-client</code> 卡片，绿色 UP。</li>
+</ol>
+<p><img src="/blog/spring-boot-admin/spring-boot-admin-02.png" alt="注册与轮询流程"></p>
+<h2 id="八管理界面导览">八、管理界面导览</h2>
+<p>界面核心页面（均为实测）：</p>
+<ul>
+<li><strong>Wallboard</strong>（首页）：所有注册应用的卡片墙，UP 绿、DOWN 红，应用下线变 OFFLINE；</li>
+<li><strong>Details</strong>：点进应用实例后的总览页，包含 Health、Info，以及 JVM 内存（堆/非堆、各内存池）、线程（总数/活跃/守护）、CPU 使用率实时图表，数据来自 Client 各 Actuator 端点，默认按周期刷新；</li>
+<li><strong>Log</strong>：实时日志流（基于 WebSocket 输出）+ 每个 logger 的级别调整入口；</li>
+<li><strong>Environment / Beans / Mappings / Conditions</strong>：分别对应 <code>/actuator/env</code>、<code>/actuator/beans</code>、<code>/actuator/mappings</code>、<code>/actuator/conditions</code> 的可视化版本，排查「配置从哪来」「这个 Bean 存不存在」「这个路径被谁映射」时好用；</li>
+<li><strong>Metrics</strong>：<code>/actuator/metrics</code> 的树状浏览，可以展开看任意指标明细。</li>
+</ul>
+<p>这些能力全部依赖第 5.2 节的 <code>include: "*"</code> 配置——不放开端点，界面这些标签页就是空的。</p>
+<h2 id="九健康监控自定义指示器与状态联动">九、健康监控：自定义指示器与状态联动</h2>
+<h3 id="91-单应用视角">9.1 单应用视角</h3>
+<p><code>payment-channel</code> 就是第 6.3 节写的自定义指示器，与 diskSpace、ping 等 Boot 内置指示器并列。</p>
+<h3 id="92-up--down--up-完整联动实测">9.2 UP → DOWN → UP 完整联动实测</h3>
+<p>模拟支付通道异常，Client 整体健康立即变化。两个细节：</p>
+<ol>
+<li><strong><code>/actuator/health</code> 的 HTTP 状态码跟随整体健康</strong>：UP 是 200，DOWN 是 503，body 始终是完整 JSON。写监控对接代码时判断 body 里的 <code>status</code> 字段，别只看 HTTP 码；</li>
+<li><strong>任一组件 DOWN，整体就是 DOWN</strong>——这是聚合语义。</li>
+</ol>
+<p>Server 侧不是实时的：它按默认周期（状态生命周期约 10 秒 + 轮询）重新拉取 Client 健康，实测 <strong>15 秒左右</strong>界面与 <code>/instances</code> API 里的状态从 UP 变成 DOWN，恢复同理。这个延迟是设计行为（避免健康抖动造成状态闪烁）；生产上需要更快感知，可以调 <code>spring.boot.admin.monitor.default-status-lifetime</code> 和 <code>period</code>。</p>
+<p><img src="/blog/spring-boot-admin/spring-boot-admin-03.png" alt="健康联动与日志治理"></p>
+<h2 id="十日志动态调级">十、日志动态调级</h2>
+<p>排查线上问题最常用的能力：不重启应用，把某个 logger 从 INFO 调成 DEBUG。</p>
+<h3 id="101-用端点操作">10.1 用端点操作</h3>
+<p>两点实测细节：</p>
+<ul>
+<li>成功响应是 <strong>204 No Content</strong>（空 body），不是 200；</li>
+<li>调级后请求一次演示接口，Client 控制台立刻出现 DEBUG 日志（调级前 <code>OrderController.list()</code> 里的 <code>log.debug</code> 不输出）；验证完恢复。</li>
+</ul>
+<p>在 Admin 界面的 Log 页做同样的事，是下拉框操作，效果一致。动态调级改的是运行时日志框架状态，<strong>应用重启后回到配置文件的级别</strong>，所以文件里的级别就是「默认级别」。</p>
+<h2 id="十一集成测试">十一、集成测试</h2>
+<p>两个模块各一个集成测试类。Client 测试有个特别之处：测试环境禁用注册，避免向不存在的 Server 周期注册产生干扰日志。Server 测试里给 <code>/instances</code> 显式设置了 <code>Accept: application/json</code>，原因见第十三章踩坑第 2 条。</p>
+<h2 id="十二端到端验证30-项断言清单">十二、端到端验证：30 项断言清单</h2>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>断言</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server</td>
+<td>health 200、Admin UI 首页可达</td>
+<td>2/2</td>
+</tr>
+<tr>
+<td>业务接口</td>
+<td>创建 200、非法参数 400、不存在 404、列表有数据</td>
+<td>4/4</td>
+</tr>
+<tr>
+<td>Client 端点</td>
+<td>health UP 且含 payment-channel 组件、show-details 生效</td>
+<td>2/2</td>
+</tr>
+<tr>
+<td>Client 端点</td>
+<td>env / beans / mappings / conditions / configprops / loggers / metrics / threaddump 全部 200</td>
+<td>8/8</td>
+</tr>
+<tr>
+<td>info</td>
+<td>info 端点暴露应用信息</td>
+<td>1/1</td>
+</tr>
+<tr>
+<td>日志调级</td>
+<td>调 DEBUG → 确认生效 → 输出 DEBUG 日志 → 恢复 INFO</td>
+<td>4/4</td>
+</tr>
+<tr>
+<td>注册</td>
+<td>Client 已注册、Server 视角 UP</td>
+<td>2/2</td>
+</tr>
+<tr>
+<td>健康联动</td>
+<td>依赖异常 → Client 503/DOWN → Server 视角 DOWN → 恢复 → 双端 UP</td>
+<td>6/6</td>
+</tr>
+</tbody>
+</table>
+<p>合计 <strong>30/30</strong> 全部通过。</p>
+<h2 id="十三踩坑复盘">十三、踩坑复盘</h2>
+<h3 id="131-server-启动时-thymeleaf-warn">13.1 Server 启动时 Thymeleaf WARN</h3>
+<p><code>Cannot find template location: classpath:/templates/</code>。根因与解法见 4.3——SBA UI 不走这个目录，<code>spring.thymeleaf.check-template-location=false</code> 关闭检查。</p>
+<h3 id="132-instances-与-ui-首页的-accept-协商">13.2 <code>/instances</code> 与 UI 首页的 Accept 协商</h3>
+<p>用 <code>Accept: application/hal+json</code> 请求 <code>http://localhost:8080/instances</code> 会得到 <strong>406 Not Acceptable</strong>；UI 首页 <code>/</code> 用纯 JSON Accept 同样 406。正确姿势：</p>
+<ul>
+<li><code>/instances</code>：<code>Accept: application/json</code>，返回实例数组；</li>
+<li>UI 首页：<code>Accept: text/html</code>（或 <code>*/*</code>）。</li>
+</ul>
+<p><code>TestRestTemplate.getForEntity</code> 默认 Accept 的协商结果恰好会命中 406，所以测试里要显式设置请求头。</p>
+<h3 id="133-健康为-down-时-http-状态码是-503">13.3 健康为 DOWN 时 HTTP 状态码是 503</h3>
+<p>第一次写验证脚本时，DOWN 的断言按 <code>s == 200</code> 判断，直接失败。实际上 Actuator 健康端点 HTTP 状态跟随聚合结果：UP=200、DOWN=503、OUT_OF_SERVICE=503，body 始终完整。这是对接监控系统时最值得记住的一条。</p>
+<h3 id="134-loggers-端点-post-成功返回-204">13.4 loggers 端点 POST 成功返回 204</h3>
+<p><code>POST /actuator/loggers/{name}</code> 设置级别成功返回 <strong>204 No Content</strong>（空 body），写自动化断言别按 200 校验。</p>
+<h3 id="135-server-停机client-会怎样">13.5 Server 停机，Client 会怎样</h3>
+<p>复验期间重启过一次 Server，Client 日志出现注册失败；Server 恢复后，Client 在下一个注册周期<strong>自动重新注册成功</strong>，全程无需重启 Client。SBA Client 的注册是「周期 + 失败重试」模型，Server 短暂不可用不影响整体可用性。</p>
+<h3 id="136-全局异常处理器必须限定包">13.6 全局异常处理器必须限定包</h3>
+<p>SBA 场景下应用会被各种框架内部请求打进来（注册心跳、端点轮询、UI 静态资源），<code>@RestControllerAdvice</code> 不限定 <code>basePackages</code> 的话，这些请求的框架异常都会被业务兜底逻辑接住，产生大量误导性的 500 与 ERROR 堆栈。</p>
+<h2 id="十四生产化建议">十四、生产化建议</h2>
+<ol>
+<li><strong>加安全</strong>：Server 界面和 Client 端点现在都是裸奔的。至少给 Server 加 Spring Security（官方 sample 有现成配置），Client 的 <code>include: "*"</code> 收敛为实际需要的端点列表，<code>env</code>、<code>beans</code>、<code>configprops</code> 这类信息泄露风险高的端点尤其要控；</li>
+<li><strong>状态告警</strong>：SBA Server 有状态变化事件机制，接 <code>spring-boot-admin-starter-mail</code> 可以在应用 DOWN/OFFLINE 时发邮件，钉钉、企微机器人用自定义 <code>AbstractStatusChangeNotifier</code> 也能接；</li>
+<li><strong>接入方式升级</strong>：微服务环境建议改服务发现接入（Eureka/Consul/Nacos），新应用上线自动出现在监控里，不需要逐个配 Client；</li>
+<li><strong>配合专业监控</strong>：SBA 看实时状态很顺手，但历史趋势、告警规则、容量规划还是要 Prometheus + Grafana，两者互补；</li>
+<li><strong>HTTPS 与网络隔离</strong>：Client 的 management 端点会暴露运行时信息，生产环境应只对内网开放（或独立 management port），Server UI 走 HTTPS；</li>
+<li><strong>注册信息持久化</strong>：默认存在内存里，Server 重启后要等 Client 重新注册（Client 会自动补注册，通常几秒到几十秒内恢复），有持久化需求可配置 Hazelcast 集群存储。</li>
+</ol>
+<h2 id="十五小结">十五、小结</h2>
+<p>回顾整条链路：</p>
+<ul>
+<li><strong>Admin Server</strong>：<code>spring-boot-admin-starter-server</code> + <code>@EnableAdminServer</code>，两行代码得到一个功能完整的监控中心；</li>
+<li><strong>Admin Client</strong>：<code>spring-boot-admin-starter-client</code> + 一段注册配置，业务应用自动上墙；</li>
+<li><strong>监控数据</strong>：全部来自 Actuator 端点，SBA 不重复造轮子，只做聚合与可视化；</li>
+<li><strong>核心能力实测</strong>：注册与容错重试、组件级健康展示与 UP/DOWN 联动（约 15 秒延迟）、日志级别动态调整（204 响应、立即生效）、Environment/Beans/Mappings 可视化。</li>
+</ul>
+<p>三个最容易复盘的点：</p>
+<ol>
+<li><strong>版本别选错</strong>：Boot 3 用 SBA 3.5.x，Maven Central 的 latest 4.x 属于 Boot 4；</li>
+<li><strong>端点要放开</strong>：Client 必须暴露 Actuator 端点并开 <code>show-details</code>，否则 Server 界面是空的；</li>
+<li><strong>健康状态码</strong>：UP=200、DOWN/OUT_OF_SERVICE=503，对接监控判断 body <code>status</code>，别只看 HTTP 码。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；内存仓储仅用于演示，真实项目应替换为持久层并补充认证授权。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-admin/">https://zhanzhenguan.github.io/blog/spring-boot-admin/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a> <p>整理 Spring Boot 3 接入 Prometheus 监控闭环的要点：Actuator/Micrometer/registry-prometheus 三者分工、版本基线、业务与管理端口分离、端点白名单与全局标签、Counter/Timer/Gauge 选型与埋点、Micrometer 注册名到 Prometheus 序列名转换、Prometheus 抓取任务配置与生效方式、Targets 入库验证、常用 PromQL、Grafana 数据源与面板、告警规则与 Alertmanager、生产上线清单（端口隔离/认证抓取/标签基数/数据保留）与常见问题排查。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-actuator/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</div> </a> <a class="next" href="/blog/spring-boot-cors/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级","description":"整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-admin/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

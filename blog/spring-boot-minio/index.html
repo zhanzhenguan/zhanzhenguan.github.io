@@ -1,0 +1,338 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 3 集成 MinIO 对象存储的要点：五个存储接口设计、桶私有走预签名 URL、对象名服务端生成规则、版本选型（minio-java 8.6.0 vs 9.x/旧版）、S3 API 9000 与 Console 9001 区分、凭据 SigV4 自检、okhttp 5.x 空壳 jar 坑、凭据隔离与类型安全配置、MinioClient 单例与启动建桶、路径穿越校验、上传/查询/外链/下载/删除封装、StreamingResponseBody 中文文件名、异常状态码映射与生产化建议。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验"><meta property="og:description" content="整理 Spring Boot 3 集成 MinIO 对象存储的要点：五个存储接口设计、桶私有走预签名 URL、对象名服务端生成规则、版本选型（minio-java 8.6.0 vs 9.x/旧版）、S3 API 9000 与 Console 9001 区分、凭据 SigV4 自检、okhttp 5.x 空壳 jar 坑、凭据隔离与类型安全配置、MinioClient 单例与启动建桶、路径穿越校验、上传/查询/外链/下载/删除封装、StreamingResponseBody 中文文件名、异常状态码映射与生产化建议。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-minio/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 11 分钟</span> <span>· 3603 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/minio/">#MinIO</a><a class="tag" href="/tags/74cef116/">#对象存储</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li class="current">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验（本文）</li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第二十七部分，用 Spring Boot 3 写一个对象存储服务，对外提供上传、查询、预签名外链、下载、删除五个接口。技术栈：Spring Boot 3.5.16、JDK 17、minio-java 8.6.0、MinIO Server。代码为通用示例，端点与凭据按实际环境调整并做好脱敏。</p>
+<h2 id="一目标与接口设计">一、目标与接口设计</h2>
+<h3 id="11-五个接口">1.1 五个接口</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路径</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/oss/upload</code></td>
+<td>上传文件，返回服务端生成的对象名</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/oss/info</code></td>
+<td>查询对象大小、MIME 类型、ETag</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/oss/url</code></td>
+<td>生成有时效的预签名 GET 链接</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/oss/download</code></td>
+<td>流式下载文件</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/oss/delete</code></td>
+<td>删除对象</td>
+</tr>
+</tbody>
+</table>
+<p>应用默认跑在 <code>8099</code> 端口，MinIO 的 S3 API 在 <code>9000</code>，Web Console 在 <code>9001</code>。</p>
+<h3 id="12-两个提前定下的设计决定">1.2 两个提前定下的设计决定</h3>
+<p><strong>桶保持私有，对外只读走预签名 URL。</strong> 很多示例会把桶策略设成 public read，然后直接拼 <code>http://ip:9000/bucket/object</code> 当外链。这在测试环境很方便，但等于把整个桶暴露出去。本工程不设置任何桶策略，外链由服务端按次签发、带过期时间，实测无签名直连返回 403。</p>
+<p><strong>对象名由服务端生成，客户端只拿到结果。</strong> 上传接口返回的 <code>objectName</code> 格式是 <code>yyyy/MM/dd/&#x3C;32位UUID>.&#x3C;小写扩展名></code>。不用原始文件名，可以避免重名覆盖、中文与空格带来的 URL 编码问题，也避免客户端通过文件名注入路径。</p>
+<h2 id="二环境与版本基线">二、环境与版本基线</h2>
+<h3 id="21-版本选型boot-3516--minio-java-860">2.1 版本选型：Boot 3.5.16 + minio-java 8.6.0</h3>
+<p>Spring Boot 用 <code>3.5.16</code>（JDK 17 兼容的 3.x 稳定版本），MinIO Java SDK 用 <code>8.6.0</code>。选型依据：</p>
+<ul>
+<li>minio-java <code>8.6.0</code> 是 8.x 稳定线最后一个版本，包含依赖升级与 CVE-2025-48924 修复；</li>
+<li><code>9.0.0</code> 是整体重构的主版本，官方说明为「Refactor entire code for v9.0.0」「Sync APIs with S3 specification」，API 与 8.x 有明显差异，教程工程代码采用它的风险更高；</li>
+<li><code>8.6.0</code> 发布时间晚于本机服务端，兼容性有保障；更早期的 8.2.x 属于 2021 年版本，与 2025 年服务端和 JDK 17 组合并不合适。</li>
+</ul>
+<p>结论：<strong>选 8.x 稳定线的终点，不选刚重构完的 9.x，也不选五年前的旧版。</strong></p>
+<h3 id="22-命名空间说明">2.2 命名空间说明</h3>
+<p>本工程使用 Jakarta 命名空间（<code>jakarta.validation.*</code>、<code>jakarta.servlet.*</code>），内嵌 Tomcat 10.1.x，这是 Spring Boot 3 的标准组合。如果照 2.x 时代的代码写 <code>javax.*</code>，在 3.x 上会直接编译失败。</p>
+<h2 id="三先分清-9000-和-9001">三、先分清 9000 和 9001</h2>
+<h3 id="31-现象">3.1 现象</h3>
+<p>本机 MinIO 在浏览器里打开的地址是 <code>http://127.0.0.1:9001/browser</code>，这是 <strong>Web Console</strong>；但 Java SDK 需要的是 <strong>S3 API</strong> 地址。两个端口同时监听，很容易填错。</p>
+<h3 id="32-结论">3.2 结论</h3>
+<p><code>minio.endpoint</code> 必须填 <code>http://127.0.0.1:9000</code>。填 9001 时，SDK 发出的 S3 请求会打到 Console 上，得到 HTML 页面或认证失败，典型报错是解析响应失败或 <code>InvalidAccessKeyId</code>。</p>
+<p>一个直观判断方法：<strong>能返回 <code>application/xml</code> 且带 <code>Server: MinIO</code> 响应头的，才是 S3 API 端口</strong>。</p>
+<h3 id="33-先用签名请求核实凭据别急着写代码">3.3 先用签名请求核实凭据，别急着写代码</h3>
+<p>Console 的登录凭据与 S3 的 Access Key / Secret Key 在单节点部署下通常是同一组，但<strong>登录名不一定等于 Access Key</strong>。接入前先用一个最小的 AWS SigV4 请求验证，避免把错误凭据写进配置后反复排查：返回 <code>200</code> 并带 <code>&#x3C;ListAllMyBucketsResult></code> 就说明这组凭据能用于 S3 API；如果返回 <code>403 InvalidAccessKeyId</code>，先核对 Access Key，不要往下写代码。</p>
+<p><img src="/blog/spring-boot-minio/spring-boot-minio-01.png" alt="集成架构与端口分工"></p>
+<h2 id="四创建-maven-工程">四、创建 Maven 工程</h2>
+<h3 id="41-pomxml-关键依赖">4.1 pom.xml 关键依赖</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-web&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-validation&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>io.minio&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>minio&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>8.6.0&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">exclusions</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">            &#x3C;!-- 排除 okhttp 5.x 空壳根模块 --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">exclusion</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>com.squareup.okhttp3&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>okhttp&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">exclusion</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">exclusions</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    &#x3C;!-- 真正的 okhttp3 类在 jvm 变体里 --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>com.squareup.okhttp3&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>okhttp-jvm&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>5.1.0&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="42-第一个坑okhttp-5x-的空壳-jar">4.2 第一个坑：okhttp 5.x 的空壳 jar</h3>
+<p>第一次 <code>mvn clean package</code> 直接编译失败，根因不在业务代码，而在依赖解析：minio-java 8.6.0 的 POM 声明了 <code>com.squareup.okhttp3:okhttp:5.1.0</code>，但 okhttp 从 5.x 起是 Kotlin Multiplatform 工程，Maven Central 上的 <code>okhttp-5.1.0.jar</code> 只有 <strong>767 字节</strong>，是个不含类的根模块；真正的 <code>okhttp3.*</code> 类在 <code>okhttp-jvm-5.1.0.jar</code>（约 860 KB）里。</p>
+<p>Gradle 会读 Gradle metadata 自动定位到 jvm 变体，而 <strong>Maven 只认 POM</strong>，于是编译期找不到类。修复方式就是上面 pom 里的两段：排除空壳 <code>okhttp</code>，显式引入 <code>okhttp-jvm</code>。判断依据是构建日志里那句 <code>Downloaded ... okhttp-5.1.0.jar (767 B)</code>——jar 小得反常。</p>
+<h2 id="五配置文件与凭据隔离">五、配置文件与凭据隔离</h2>
+<h3 id="51-applicationyml">5.1 application.yml</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">minio</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  endpoint</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">http://127.0.0.1:9000</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  access-key</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${MINIO_ACCESS_KEY:}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  secret-key</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${MINIO_SECRET_KEY:}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  bucket</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">springboot-minio-demo</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  presigned-expiry-seconds</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3600</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">logging</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  charset</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    console</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">UTF-8</span></span></code></pre>
+<p><code>logging.charset.console: UTF-8</code> 避免 Windows 控制台把中文日志打成乱码；文件大小限制放在配置里，比在代码里硬编码更合适。</p>
+<h3 id="52-凭据隔离">5.2 凭据隔离</h3>
+<p>主配置里全是占位符，真实凭据放在单独的 <code>application-local.yml</code>，默认激活 <code>local</code> profile，并在 <code>.gitignore</code> 中忽略该文件。这样工程拷给别人时，对方按自己的 MinIO 填一遍即可，主配置可以直接进版本库。所有配置项都支持环境变量覆盖，部署时无需改文件。</p>
+<h2 id="六类型安全的配置属性">六、类型安全的配置属性</h2>
+<p>配置类不用散落的 <code>@Value</code>，而是用 Spring Boot 3 推荐的构造器绑定。record 是不可变的，字段集中、便于单元测试：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">ConfigurationProperties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">prefix</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "minio"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> record</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> MinioConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String endpoint,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String accessKey,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String secretKey,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String bucket,</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        int</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> presignedExpirySeconds) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>minio.access-key</code> 通过宽松绑定映射到 <code>accessKey</code> 组件，<code>minio.presigned-expiry-seconds</code> 映射到 <code>presignedExpirySeconds</code>。配置 Bean 装配前检查必填项，凭据为空时直接抛 <code>IllegalStateException</code> 并给出提示，不会等到调用接口才报认证错误。</p>
+<h2 id="七装配-minioclient-与启动校验">七、装配 MinioClient 与启动校验</h2>
+<p><code>MinioClient</code> 是线程安全的，全局一个 Bean 即可，不需要每次请求新建。它是纯客户端，构造时不会发起网络请求，所以「启动校验」做的是配置完整性检查，真正的连通性由建桶动作验证：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MinioClient </span><span style="color:#6F42C1;--shiki-dark:#B392F0">minioClient</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MinioConfig config) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MinioClient.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">endpoint</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(config.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">endpoint</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">credentials</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(config.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">accessKey</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(), config.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">secretKey</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h2 id="八启动时自动创建存储桶">八、启动时自动创建存储桶</h2>
+<p>三个要点：</p>
+<ol>
+<li><strong>用 <code>ApplicationRunner</code> 而不是 <code>InitializingBean</code></strong>：Runner 在所有 Bean 就绪、上下文刷新完成后执行，时序更清晰，也便于拿到完整配置；</li>
+<li><strong>先查后建，天然幂等</strong>：多次启动不会重复创建，第二次启动日志为「存储桶已存在，跳过创建」；</li>
+<li><strong>不设置桶策略</strong>：保持私有。若需要公开读，应显式设置策略，而不是默认放开。</li>
+</ol>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Component</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> MinioBucketInitializer</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ApplicationRunner</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MinioClient minioClient;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MinioConfig config;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> run</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(ApplicationArguments </span><span style="color:#E36209;--shiki-dark:#FFAB70">args</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">throws</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Exception {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> exists </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> minioClient.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">bucketExists</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(BucketExistsArgs.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">bucket</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(config.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">bucket</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#D73A49;--shiki-dark:#F97583">!</span><span style="color:#24292E;--shiki-dark:#E1E4E8">exists) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            minioClient.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">makeBucket</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MakeBucketArgs.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">bucket</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(config.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">bucket</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>这里带来一个明确的启动依赖：MinIO 不可达时应用会启动失败（快速失败）。对教程工程这是优点——连通性问题第一时间暴露；多实例生产部署时可以把建桶挪到运维初始化步骤。</p>
+<h2 id="九对象名的生成与安全校验">九、对象名的生成与安全校验</h2>
+<h3 id="91-生成规则">9.1 生成规则</h3>
+<p>扩展名只接受 1~10 位字母数字并统一转小写，其他一律丢弃。上传 <code>pixel.PNG</code> 得到的对象名形如 <code>2026/11/27/98075d4376354827bbe35915c36df03a.png</code>。</p>
+<h3 id="92-校验规则">9.2 校验规则</h3>
+<p><code>objectName</code> 是外部可控入参，如果不校验就拼进 S3 请求路径，风险很直接。校验放在一个无依赖的工具类里：拦截 <code>../</code>、绝对路径、双斜杠、反斜杠、NUL 与控制字符，再用白名单正则收口。所有信息查询、外链、下载、删除接口在操作前都会调用它。</p>
+<p><img src="/blog/spring-boot-minio/spring-boot-minio-02.png" alt="对象名生成与安全校验"></p>
+<h3 id="93-单元测试覆盖">9.3 单元测试覆盖</h3>
+<p>对象名校验工具类配若干纯单测，覆盖空值、路径穿越、非法字符、超长、正常名称、生成名安全性。它们不依赖 Spring 上下文和 MinIO，执行时间毫秒级。</p>
+<h2 id="十封装五个存储操作">十、封装五个存储操作</h2>
+<p><code>MinioStorageService</code> 统一持有 <code>MinioClient</code> 与配置属性，对 Controller 只暴露业务语义方法。</p>
+<h3 id="101-上传">10.1 上传</h3>
+<p><code>putObject</code> 的 <code>stream(in, size, -1)</code> 中 <code>-1</code> 表示由 SDK 决定分片大小；小文件走单次 PUT，大文件自动分片。流用 try-with-resources 关闭，避免连接泄漏。</p>
+<h3 id="102-统一判定对象不存在">10.2 统一判定「对象不存在」</h3>
+<p>信息查询、外链、下载、删除都需要先确认对象存在，所以抽出一个私有方法：沿异常链检查 <code>ErrorResponseException</code> 的 S3 错误码（<code>NoSuchKey</code> / <code>NoSuchObject</code> / <code>NoSuchBucket</code>）与消息关键字。MinIO 不同版本对不存在对象返回的错误码不完全一致，只判一个码容易漏判。</p>
+<h3 id="103-生成预签名外链">10.3 生成预签名外链</h3>
+<p>两个边界值得注意：有效期上限 7 天是 S3 预签名机制的约束；签发前先 <code>statObject</code>，避免给一个不存在的对象生成「能打开但必然 404」的链接。</p>
+<blockquote>
+<p>注意：<code>X-Amz-Credential</code> 里本来就包含 Access Key，这是 S3 规范，不是 Secret Key 泄露；但分享链接时仍应谨慎，因为链接在有效期内等同于一次授权访问。</p>
+</blockquote>
+<h3 id="104-下载">10.4 下载</h3>
+<p>返回的是 <code>InputStream</code>，由 Controller 在写出时关闭，不把整个文件读进内存。</p>
+<h3 id="105-删除">10.5 删除</h3>
+<p>S3 的删除本身是幂等的，这里先查存在性是为了让重复删除返回明确的 404，便于调用方感知状态。</p>
+<p><img src="/blog/spring-boot-minio/spring-boot-minio-03.png" alt="五个存储操作链路"></p>
+<h2 id="十一编写-rest-接口">十一、编写 REST 接口</h2>
+<h3 id="111-控制器">11.1 控制器</h3>
+<p>类上的 <code>@Validated</code> 让方法参数上的 <code>@Min</code> / <code>@Max</code> 生效，校验失败抛 <code>ConstraintViolationException</code>，由全局异常处理器映射为 400。</p>
+<h3 id="112-下载为什么用-streamingresponsebody">11.2 下载为什么用 StreamingResponseBody</h3>
+<p><code>StreamingResponseBody</code> 边读边写，内存占用与文件大小无关；<code>filename*=UTF-8''</code> 是 RFC 5987 写法，保证中文文件名不乱码。实测响应头为 <code>attachment; filename*=UTF-8''&#x3C;对象名></code>。</p>
+<h2 id="十二统一响应与异常映射">十二、统一响应与异常映射</h2>
+<h3 id="121-状态码约定">12.1 状态码约定</h3>
+<table>
+<thead>
+<tr>
+<th>状态码</th>
+<th>场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>200</td>
+<td>操作成功</td>
+</tr>
+<tr>
+<td>400</td>
+<td>对象名非法、路径穿越、空文件、缺参、参数类型错误、有效期越界、非 multipart 请求</td>
+</tr>
+<tr>
+<td>404</td>
+<td>对象不存在、接口或静态资源不存在</td>
+</tr>
+<tr>
+<td>405</td>
+<td>请求方法不支持</td>
+</tr>
+<tr>
+<td>413</td>
+<td>文件超过大小限制</td>
+</tr>
+<tr>
+<td>415</td>
+<td>媒体类型不支持</td>
+</tr>
+<tr>
+<td>502</td>
+<td>MinIO 服务访问失败</td>
+</tr>
+</tbody>
+</table>
+<h3 id="122-第二个坑参数错误被兜底成-500">12.2 第二个坑：参数错误被兜底成 500</h3>
+<p>首轮端到端补测发现：Spring MVC 抛出的 <code>MultipartException</code>、<code>MethodArgumentTypeMismatchException</code> 等参数异常没有被精确映射，落进了 <code>@ExceptionHandler(Exception.class)</code> 兜底，客户端一个拼写错误就在服务端留下一条 ERROR 堆栈。补齐显式映射即可。</p>
+<p><strong>教训</strong>：只要写了 <code>@ExceptionHandler(Exception.class)</code> 兜底，就必须把常见的 Spring MVC 参数异常逐个显式映射，否则客户端的参数错误会在服务端看起来像系统故障。</p>
+<h3 id="123-第三个坑favicon-触发-500-堆栈">12.3 第三个坑：favicon 触发 500 堆栈</h3>
+<p>浏览器打开应用首页会自动请求 <code>/favicon.ico</code>，Spring 6 抛 <code>NoResourceFoundException</code>，同样会被兜底 handler 包装成 500 并打印整段堆栈。显式加一条映射后返回 404，日志保持干净。</p>
+<p>最终全局异常处理器应精确覆盖 <code>IllegalArgumentException</code>、缺参、缺文件、参数类型不匹配、非 multipart、校验失败、请求体不可读、文件过大、方法不支持、媒体类型不支持、对象不存在、存储异常、接口/静态资源不存在等十多类异常，最后才留一个 <code>Exception.class</code> 兜底。</p>
+<h2 id="十三编译启动与实测验证">十三、编译、启动与实测验证</h2>
+<h3 id="131-构建与单元测试">13.1 构建与单元测试</h3>
+<p>集成测试在启动 Spring 上下文时真实连接 MinIO，输出「MinIO 存储桶创建成功」，说明配置绑定、客户端装配、建桶逻辑整条链路可用。</p>
+<h3 id="132-端到端验证">13.2 端到端验证</h3>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>验证点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>上传</td>
+<td>文本文件、PNG 图片、对象名按日期分目录、扩展名小写、大小一致</td>
+</tr>
+<tr>
+<td>信息</td>
+<td>大小、ETag</td>
+</tr>
+<tr>
+<td>外链</td>
+<td>默认 3600 秒、自定义 120 秒、URL 含签名参数</td>
+</tr>
+<tr>
+<td>安全</td>
+<td>预签名 URL 可直接下载且内容一致；无签名直连返回 403（私有桶）</td>
+</tr>
+<tr>
+<td>下载</td>
+<td>流式返回、<code>Content-Disposition: attachment</code>、字节内容一致</td>
+</tr>
+<tr>
+<td>异常</td>
+<td>对象不存在 404、路径穿越 400、非法字符 400、有效期越界 400、空文件 400、缺参 400、非 multipart 400、错误方法 405、favicon 404</td>
+</tr>
+<tr>
+<td>删除</td>
+<td>删除成功、删除后查询 404、重复删除 404</td>
+</tr>
+</tbody>
+</table>
+<p>在 MinIO Console（<code>http://127.0.0.1:9001/browser</code>）进入对应桶，能看到按日期分目录的对象；上传成功后刷新可见，删除后对象消失。Console 只用来观察结果，所有读写都走应用接口。</p>
+<h2 id="十四常见问题">十四、常见问题</h2>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>根因与处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>启动报认证失败或响应解析失败</td>
+<td>查 <code>minio.endpoint</code>：填成 9001（Console）会拿到 HTML；S3 API 端口应返回 <code>application/xml</code> 的 403，而不是 <code>text/html</code> 的 200</td>
+</tr>
+<tr>
+<td><code>InvalidAccessKeyId</code></td>
+<td>S3 Access Key 与 Console 登录名不一定一致，先用 SigV4 自检脚本验证，再写配置</td>
+</tr>
+<tr>
+<td>预签名 URL 打不开</td>
+<td>依次排查桶名/对象名是否正确、URL 是否已过期、应用与 MinIO 地址是否可达；服务端配置外网地址而本机用 <code>127.0.0.1</code> 时，签发 URL 的 host 可能与客户端可达地址不一致，需统一 <code>MINIO_ENDPOINT</code></td>
+</tr>
+<tr>
+<td>编译报「找不到 okhttp3.HttpUrl 的类文件」</td>
+<td>见 4.2：排除 <code>okhttp:5.1.0</code>，显式引入 <code>okhttp-jvm:5.1.0</code></td>
+</tr>
+<tr>
+<td>中文日志或文件名乱码</td>
+<td>控制台加 <code>logging.charset.console: UTF-8</code>；下载响应用 <code>filename*=UTF-8''</code> 编码；CMD 仍乱码执行 <code>chcp 65001</code></td>
+</tr>
+<tr>
+<td>参数写错返回 500 并打印堆栈</td>
+<td>见 12.2：把 <code>MultipartException</code>、<code>MethodArgumentTypeMismatchException</code> 等 Spring MVC 参数异常显式映射为 400，不要只留 <code>Exception.class</code> 兜底</td>
+</tr>
+</tbody>
+</table>
+<h2 id="十五生产化建议">十五、生产化建议</h2>
+<ol>
+<li><strong>凭据管理</strong>：通过环境变量或密钥管理服务注入，定期轮换，绝不写进公开仓库；</li>
+<li><strong>传输安全</strong>：MinIO 与应用之间启用 HTTPS，避免预签名 URL 和凭据在明文链路传输；</li>
+<li><strong>最小权限</strong>：为应用单独创建只读/只写限定桶的 Service Account，不要直接用 root 凭据；</li>
+<li><strong>外链治理</strong>：按最小有效期签发，考虑绑定客户端 IP、单次下载、审计日志；链接含 Access Key，分享需谨慎；</li>
+<li><strong>上传治理</strong>：补充文件类型白名单、病毒扫描、限流；超过大小上限改用分片上传或客户端直传（后端只签发临时凭证）；</li>
+<li><strong>可观测性</strong>：记录对象名、大小、耗时、失败原因；桶配置生命周期规则清理过期对象，配置容量与请求量告警；</li>
+<li><strong>启动依赖</strong>：建桶初始化让 MinIO 成为强依赖，多实例部署时可改为运维初始化或降级告警；</li>
+<li><strong>映射关系落库</strong>：对象名与业务主键、上传者、业务标签的对应关系建议持久化，便于审计、回溯与清理。</li>
+</ol>
+<h2 id="十六小结">十六、小结</h2>
+<ol>
+<li><strong>先把环境事实搞清楚</strong>——9000 与 9001 的区别、服务端版本、凭据是否真的能调 S3 API。这三件事没确认就写代码，后面所有报错都会变得难以归因。</li>
+<li><strong>把安全边界设在服务端</strong>——桶私有、对象名服务端生成、外部对象名白名单校验、外链按次签发并设上限。对象存储最容易被忽略的风险就是「顺手把桶设成 public」。</li>
+<li><strong>异常要精确到状态码</strong>——<code>Exception.class</code> 兜底不是错误处理，只是最后一道防线。参数错误、对象不存在、存储服务异常应当分别返回 400 / 404 / 502，日志里才不会出现「客户端拼错参数、服务端打印 ERROR 堆栈」这种假故障。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-minio/">https://zhanzhenguan.github.io/blog/spring-boot-minio/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-kafka/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</div> </a> <a class="next" href="/blog/spring-boot-mongodb/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 数据访问：整合 MongoDB 文档数据库</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验","description":"整理 Spring Boot 3 集成 MinIO 对象存储的要点：五个存储接口设计、桶私有走预签名 URL、对象名服务端生成规则、版本选型（minio-java 8.6.0 vs 9.x/旧版）、S3 API 9000 与 Console 9001 区分、凭据 SigV4 自检、okhttp 5.x 空壳 jar 坑、凭据隔离与类型安全配置、MinioClient 单例与启动建桶、路径穿越校验、上传/查询/外链/下载/删除封装、StreamingResponseBody 中文文件名、异常状态码映射与生产化建议。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-minio/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

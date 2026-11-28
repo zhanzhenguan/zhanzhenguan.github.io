@@ -1,0 +1,395 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 3 整合 WebSocket 的要点：原生 WebSocket 与 STOMP 选型、消息路由前缀设计、WebSocket 配置类、群聊 @MessageMapping/@SendTo、点对点 convertAndSendToUser、断开事件监听与会话属性、机器人防死循环、定时推送、SockJS 降级、XSS 防护，以及 SimpleBroker 单机限制与集群中继方案。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期"><meta property="og:description" content="整理 Spring Boot 3 整合 WebSocket 的要点：原生 WebSocket 与 STOMP 选型、消息路由前缀设计、WebSocket 配置类、群聊 @MessageMapping/@SendTo、点对点 convertAndSendToUser、断开事件监听与会话属性、机器人防死循环、定时推送、SockJS 降级、XSS 防护，以及 SimpleBroker 单机限制与集群中继方案。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-websocket/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 6 分钟</span> <span>· 2110 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/websocket/">#WebSocket</a><a class="tag" href="/tags/stomp/">#STOMP</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li class="current">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期（本文）</li> </ol> </div> <p>这篇是 Spring Boot 系列第十七部分，用 STOMP over WebSocket 实现一个聊天室：群聊广播、点对点私聊、机器人回复、连接状态监听、定时系统消息。技术栈：Spring Boot 3.5.16、JDK 17、<code>spring-boot-starter-websocket</code>、Thymeleaf，前端 SockJS + STOMP.js。代码为通用示例，地址与端口按实际环境调整。</p>
+<h2 id="一websocket-简介">一、WebSocket 简介</h2>
+<p>WebSocket 是在单个 TCP 连接上进行<strong>全双工通信</strong>的协议，允许服务器和客户端实时双向数据传输。HTTP 是「请求—响应」模式：客户端不发问，服务器不吭声；WebSocket 握手成功后双方变成「对讲机」，谁都能随时说话。</p>
+<h3 id="11-核心特点">1.1 核心特点</h3>
+<ol>
+<li><strong>持久连接</strong>：一次握手，持续通信；</li>
+<li><strong>全双工</strong>：客户端和服务器都能主动发送消息；</li>
+<li><strong>低延迟</strong>：无需重复建立连接；</li>
+<li><strong>轻量级</strong>：数据帧头部开销小。</li>
+</ol>
+<h3 id="12-工作流程">1.2 工作流程</h3>
+<ol>
+<li><strong>握手</strong>：客户端发送 HTTP 请求，协议升级为 WebSocket；</li>
+<li><strong>连接建立</strong>：服务器同意升级，建立持久连接；</li>
+<li><strong>数据传输</strong>：双方可随时发送/接收消息；</li>
+<li><strong>连接关闭</strong>：任一方都可主动关闭连接。</li>
+</ol>
+<h3 id="13-应用场景">1.3 应用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>实时聊天</td>
+<td>即时消息应用</td>
+</tr>
+<tr>
+<td>在线游戏</td>
+<td>实时状态同步</td>
+</tr>
+<tr>
+<td>股票行情</td>
+<td>实时价格推送</td>
+</tr>
+<tr>
+<td>协作工具</td>
+<td>多人在线编辑</td>
+</tr>
+<tr>
+<td>直播弹幕</td>
+<td>实时评论展示</td>
+</tr>
+</tbody>
+</table>
+<h3 id="14-与-http-对比">1.4 与 HTTP 对比</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>HTTP</th>
+<th>WebSocket</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>连接方式</td>
+<td>请求-响应</td>
+<td>持久连接</td>
+</tr>
+<tr>
+<td>通信方向</td>
+<td>单向</td>
+<td>双向</td>
+</tr>
+<tr>
+<td>开销</td>
+<td>每次请求都有头部</td>
+<td>握手后开销极小</td>
+</tr>
+<tr>
+<td>实时性</td>
+<td>需要轮询</td>
+<td>真正实时</td>
+</tr>
+</tbody>
+</table>
+<p><img src="/blog/spring-boot-websocket/spring-boot-websocket-01.png" alt="全双工通信对比"></p>
+<h2 id="二技术选型原生-websocket-vs-stomp">二、技术选型：原生 WebSocket vs STOMP</h2>
+<h3 id="21-两种方案">2.1 两种方案</h3>
+<ul>
+<li><strong>原生 WebSocket</strong>：只提供底层帧通道，订阅、路由、分发都要手写；</li>
+<li><strong>STOMP over WebSocket</strong>：在 WebSocket 之上加一层文本消息协议，自带订阅/路由/目的地机制。</li>
+</ul>
+<p>聊天室这种有「广播 + 点对点」需求的场景，STOMP 的订阅/路由能省掉大量手写分发代码，Spring 对它的支持也最完整，本文选择 STOMP over WebSocket。</p>
+<h3 id="22-消息路由前缀">2.2 消息路由前缀</h3>
+<p>四条核心路由约定是整个项目的「地图」：</p>
+<table>
+<thead>
+<tr>
+<th>前缀</th>
+<th>作用</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/topic</code></td>
+<td>广播消息前缀</td>
+<td><code>/topic/public</code> 公共聊天室</td>
+</tr>
+<tr>
+<td><code>/queue</code></td>
+<td>队列消息前缀</td>
+<td><code>/queue/private</code> 私聊消息</td>
+</tr>
+<tr>
+<td><code>/app</code></td>
+<td>应用消息前缀</td>
+<td>客户端发到 <code>/app/chat.sendMessage</code></td>
+</tr>
+<tr>
+<td><code>/user</code></td>
+<td>用户专用前缀</td>
+<td><code>/user/queue/private</code> 用户私聊队列</td>
+</tr>
+<tr>
+<td><code>/ws</code></td>
+<td>WebSocket 端点</td>
+<td>客户端连接地址</td>
+</tr>
+</tbody>
+</table>
+<p>消息类型用枚举区分，前端按类型渲染不同样式（JOIN / CHAT / LEAVE / BOT / ADMIN）。</p>
+<p><img src="/blog/spring-boot-websocket/spring-boot-websocket-02.png" alt="STOMP 消息路由分层"></p>
+<h2 id="三项目搭建">三、项目搭建</h2>
+<h3 id="31-版本基线">3.1 版本基线</h3>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JDK</td>
+<td>17</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>3.5.16</td>
+</tr>
+<tr>
+<td>spring-boot-starter-websocket</td>
+<td>3.5.16（BOM 管理）</td>
+</tr>
+<tr>
+<td>Thymeleaf</td>
+<td>3.1.x（BOM 管理）</td>
+</tr>
+<tr>
+<td>SockJS Client</td>
+<td>1.6.1（前端 CDN）</td>
+</tr>
+<tr>
+<td>STOMP.js</td>
+<td>2.3.3（前端 CDN）</td>
+</tr>
+</tbody>
+</table>
+<p>Spring Boot 3.x 要求 JDK 17 起步，底层是 Jakarta EE 9+，包名从 <code>javax</code> 换成 <code>jakarta</code>。</p>
+<h3 id="32-maven-依赖">3.2 Maven 依赖</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">parent</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-parent&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>3.5.16&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">parent</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">properties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">java.version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>17&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">java.version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">properties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-websocket&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-web&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-thymeleaf&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-actuator&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="33-applicationyml">3.3 application.yml</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">server</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  port</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">8080</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">logging</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  level</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    # 排查消息路由问题时放开 DEBUG，每条 STOMP 帧进出都可见</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    org.springframework.web.socket</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">INFO</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    org.springframework.messaging</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">INFO</span></span></code></pre>
+<p>两个说明：</p>
+<ol>
+<li><strong>端口不是硬性要求，但必须前后端一致</strong>：<code>server.port</code> 改了多少，前端连的地址就得跟着改；服务明明启动了客户端连不上，先查端口是否对得上。启动前用 <code>netstat -ano | findstr :8080</code> 确认端口未被占用；</li>
+<li>调试日志默认注释保留，排查路由问题时再放开 <code>org.springframework.web.socket</code> 和 <code>org.springframework.messaging</code> 的 DEBUG。</li>
+</ol>
+<h2 id="四核心代码实现">四、核心代码实现</h2>
+<h3 id="41-websocket-配置类">4.1 WebSocket 配置类</h3>
+<p>整个项目最核心的配置类，三个方法各管一件事：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">EnableWebSocketMessageBroker</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> WebSocketConfig</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> WebSocketMessageBrokerConfigurer</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> registerStompEndpoints</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(StompEndpointRegistry </span><span style="color:#E36209;--shiki-dark:#FFAB70">registry</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        registry.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">addEndpoint</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/ws"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setAllowedOriginPatterns</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"*"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">withSockJS</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> configureMessageBroker</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MessageBrokerRegistry </span><span style="color:#E36209;--shiki-dark:#FFAB70">registry</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // 广播 + 点对点目的地，由内置 SimpleBroker 内存代理处理</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        registry.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">enableSimpleBroker</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/topic"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/queue"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // 客户端发送消息的应用入口前缀</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        registry.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setApplicationDestinationPrefixes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/app"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>三个关键点：</p>
+<ol>
+<li><code>@EnableWebSocketMessageBroker</code> 启用 STOMP 消息代理，没有它所有 <code>@MessageMapping</code> 都不生效；</li>
+<li><code>setAllowedOriginPatterns("*")</code> 用的是 <strong>Patterns</strong> 版本；若用 <code>setAllowedOrigins("*")</code>，在携带凭证的场景下会直接报错；</li>
+<li><code>withSockJS()</code> 提供降级方案：浏览器不支持 WebSocket 时自动切到 HTTP 长轮询，保证连接能建立。</li>
+</ol>
+<h3 id="42-消息实体">4.2 消息实体</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Data</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Builder</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">NoArgsConstructor</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">AllArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ChatMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** JOIN / CHAT / LEAVE / BOT / ADMIN */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String type;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String username;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String content;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">JsonFormat</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">pattern</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "yyyy-MM-dd HH:mm:ss"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> LocalDateTime timestamp;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 机器人回复标记，防死循环 */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> autoReply;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>两个设计细节：</p>
+<ol>
+<li><code>@JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")</code>：不指定格式，<code>LocalDateTime</code> 默认序列化成带 <code>T</code> 的 ISO 串，前端直接显示一个 <code>T</code>；</li>
+<li><code>autoReply</code> 是防死循环开关：机器人回复的消息带这个标记，回复判断时直接跳过，否则机器人会跟自己聊上一整天。</li>
+</ol>
+<h3 id="43-群聊控制器">4.3 群聊控制器</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Slf4j</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Controller</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ChatController</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SimpMessagingTemplate messagingTemplate;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 客户端发到 /app/chat.sendMessage */</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">MessageMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/chat.sendMessage"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">SendTo</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/topic/public"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ChatMessage </span><span style="color:#6F42C1;--shiki-dark:#B392F0">sendMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(@</span><span style="color:#D73A49;--shiki-dark:#F97583">Payload</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ChatMessage </span><span style="color:#E36209;--shiki-dark:#FFAB70">message</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                                  SimpMessageHeaderAccessor </span><span style="color:#E36209;--shiki-dark:#FFAB70">accessor</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        message.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setTimestamp</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(LocalDateTime.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">now</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> message;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 用户加入：把用户名存进 WebSocket 会话属性 */</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">MessageMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/chat.addUser"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">SendTo</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/topic/public"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ChatMessage </span><span style="color:#6F42C1;--shiki-dark:#B392F0">addUser</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(@</span><span style="color:#D73A49;--shiki-dark:#F97583">Payload</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ChatMessage </span><span style="color:#E36209;--shiki-dark:#FFAB70">message</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                              SimpMessageHeaderAccessor </span><span style="color:#E36209;--shiki-dark:#FFAB70">accessor</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        accessor.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getSessionAttributes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"username"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, message.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getUsername</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        message.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setType</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"JOIN"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        message.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setTimestamp</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(LocalDateTime.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">now</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> message;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>三个注解是 STOMP 开发的「三板斧」：</p>
+<ul>
+<li><strong><code>@MessageMapping("/chat.sendMessage")</code></strong>：类似 HTTP 的 <code>@PostMapping</code>，客户端发到 <code>/app/chat.sendMessage</code> 的消息落到这个方法；</li>
+<li><strong><code>@SendTo("/topic/public")</code></strong>：方法返回值自动序列化为 JSON，广播到 <code>/topic/public</code>，所有订阅者都能收到；</li>
+<li><strong><code>@Payload</code></strong>：把 STOMP 消息体反序列化成 <code>ChatMessage</code>。</li>
+</ul>
+<p><code>SimpMessageHeaderAccessor</code> 的关键动作：<code>getSessionAttributes().put("username", ...)</code> 把用户名存进 WebSocket 会话。为什么不在断开事件里直接拿？因为断开事件触发时客户端已经「跑了」，只能从会话属性里捞出断开前的用户名——这是事件监听器能拿到用户名的前提。</p>
+<h3 id="44-私聊控制器点对点">4.4 私聊控制器（点对点）</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Controller</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> PrivateChatController</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SimpMessagingTemplate messagingTemplate;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">MessageMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/chat.private"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sendPrivate</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(@</span><span style="color:#D73A49;--shiki-dark:#F97583">Payload</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ChatMessage </span><span style="color:#E36209;--shiki-dark:#FFAB70">message</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                            SimpMessageHeaderAccessor </span><span style="color:#E36209;--shiki-dark:#FFAB70">accessor</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // 实际路由为 /user/{userId}/queue/private</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        messagingTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">convertAndSendToUser</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                message.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getTo</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(), </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/queue/private"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, message);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>convertAndSendToUser(userId, "/queue/private", message)</code> 的实际路由是 <code>/user/{userId}/queue/private</code>——目标用户前端订阅 <code>/user/queue/private</code> 时，STOMP 自动把订阅映射到自己专属的队列，<strong>别人订阅同名目的地也收不到你的私聊</strong>，这就是点对点的本质。</p>
+<p><img src="/blog/spring-boot-websocket/spring-boot-websocket-03.png" alt="广播订阅与私有队列"></p>
+<h3 id="45-事件监听器">4.5 事件监听器</h3>
+<p>断开事件里的消息需要重新包装才能访问会话属性：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Slf4j</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Component</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> WebSocketEventListener</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">EventListener</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> handleDisconnect</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(SessionDisconnectEvent </span><span style="color:#E36209;--shiki-dark:#FFAB70">event</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        StompHeaderAccessor accessor </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> StompHeaderAccessor.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">wrap</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String username </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (String) accessor.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getSessionAttributes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">get</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"username"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"用户离开聊天室：{}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, username);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>这里拿到的 <code>username</code> 就是加入时存进会话属性的那个。</p>
+<h3 id="46-智能回复与定时消息">4.6 智能回复与定时消息</h3>
+<p>智能回复服务的灵魂是 <code>shouldReply</code>：过滤掉 BOT / ADMIN 类型且 <code>autoReply=true</code> 的消息，否则机器人回复的 BOT 消息会再次进入回复流程，触发新一轮回复，消息雪崩。</p>
+<p>定时消息服务：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Service</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ScheduledBroadcastService</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SimpMessagingTemplate messagingTemplate;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 每 30 秒一条系统提醒；首次发送延后 1 分钟，避免上线即推送 */</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Scheduled</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">fixedRate</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 30</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 60</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">initialDelay</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 60</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> broadcastSystemNotice</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        ChatMessage msg </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ChatMessage.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"ADMIN"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"系统"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">content</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"欢迎使用聊天室"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">timestamp</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(LocalDateTime.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">now</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        messagingTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">convertAndSend</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/topic/public"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, msg);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>一个容易忽略的细节：<code>@Scheduled(fixedRate = ...)</code> <strong>默认应用启动时立即执行一次</strong>；加 <code>initialDelay</code> 控制首次发送时机。</p>
+<h3 id="47-启动类">4.7 启动类</h3>
+<p><code>@EnableScheduling</code> 不能忘：只写 <code>@Scheduled</code> 不加这个开关，定时任务一条都不会执行，而且没有任何报错——这是定时任务问题里最「哑巴」的一种。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">SpringBootApplication</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">EnableScheduling</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> WebsocketDemoApplication</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">[] </span><span style="color:#E36209;--shiki-dark:#FFAB70">args</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        SpringApplication.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(WebsocketDemoApplication.class, args);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><img src="/blog/spring-boot-websocket/spring-boot-websocket-04.png" alt="连接生命周期"></p>
+<h2 id="五前端接入">五、前端接入</h2>
+<h3 id="51-引入前端依赖">5.1 引入前端依赖</h3>
+<p>两个库各干各的活：SockJS 负责「怎么连」（连接 + 降级），STOMP.js 负责「说什么」（订阅、发送、路由）。</p>
+<h3 id="52-客户端连接与订阅">5.2 客户端连接与订阅</h3>
+<p>三个订阅/发送路径对应路由设计：连接 <code>/ws</code>，订阅 <code>/topic/public</code>（广播）和 <code>/user/queue/private</code>（私聊），发送到 <code>/app/chat.sendMessage</code>。</p>
+<p><strong>特别注意 XSS 防护</strong>：聊天内容是任意用户输入，直接拼 <code>innerHTML</code> 是教科书级 XSS 漏洞。所有用户输入渲染前必须转义，用 <code>textContent</code> 或 <code>createTextNode</code>，不要把用户输入裸拼进 <code>innerHTML</code>。</p>
+<h2 id="六运行与验证">六、运行与验证</h2>
+<ol>
+<li>启动应用，看到 <code>Started WebsocketDemoApplication</code> 即成功；</li>
+<li>浏览器访问 <code>http://localhost:8080/</code> 进入聊天室；SockJS 端点返回 <code>websocket: true</code> 说明 WebSocket 通道就绪；健康检查 <code>/actuator/health</code>；</li>
+<li>端到端流程：两个标签页用不同用户名进入 → 收到 JOIN 广播和欢迎消息 → 发送消息触发机器人回复 → 新用户加入时广播自动推送 → 退出时收到 LEAVE 广播 → 服务端可主动推送系统消息。</li>
+</ol>
+<h2 id="七踩坑与注意事项">七、踩坑与注意事项</h2>
+<ol>
+<li><strong>端口冲突</strong>：8080 被占用时应用起不来（<code>Port 8080 was already in use</code>）。启动前确认端口空闲；端口改了就同步改前端连接地址；</li>
+<li><strong>机器人死循环</strong>：<code>shouldReply</code> 必须过滤 BOT/ADMIN 类型且 <code>autoReply=true</code> 的消息，否则机器人回复自己，消息雪崩；</li>
+<li><strong><code>@EnableScheduling</code> 别漏</strong>：<code>@Scheduled</code> 没有这个开关不生效，且无任何报错；</li>
+<li><strong><code>fixedRate</code> 启动即执行</strong>：定时任务默认应用启动先跑一次，需要 <code>initialDelay</code> 控制首次时机；</li>
+<li><strong>XSS 防护</strong>：聊天内容渲染前必须 HTML 转义，不要裸拼 <code>innerHTML</code>；</li>
+<li><strong>生产收紧跨域</strong>：<code>setAllowedOriginPatterns("*")</code> 只适合开发，上线改成具体域名列表；</li>
+<li><strong>SimpleBroker 的天花板</strong>：<code>enableSimpleBroker</code> 是单机内存代理，不支持集群和多实例部署。需要横向扩展时换 <code>enableStompBrokerRelay</code>，对接 RabbitMQ（STOMP 插件）或 ActiveMQ，代码层面只需改配置类一行，Controller 层零改动；</li>
+<li><strong>会话属性是断开事件的唯一线索</strong>：连接断开后客户端信息就没了，靠 <code>SessionDisconnectEvent</code> + 会话属性才能拿到「是谁离开了」，所以加入时那次 <code>getSessionAttributes().put("username", ...)</code> 不可省略。</li>
+</ol>
+<h2 id="八小结">八、小结</h2>
+<p>这套聊天室覆盖了 Spring Boot 整合 WebSocket 的完整闭环：STOMP 协议分层（端点 <code>/ws</code> → 前缀路由 → SimpleBroker）、群聊广播、点对点私聊、机器人智能回复、连接状态监听、定时系统消息、SockJS 降级。</p>
+<p>核心记忆点是三组前缀：<code>/topic</code> 广播、<code>/queue</code> 点对点、<code>/app</code> 客户端入口，再加 <code>/ws</code> 连接端点。理解这四个地址的作用，Spring WebSocket 的消息流向就一目了然。</p>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-websocket/">https://zhanzhenguan.github.io/blog/spring-boot-websocket/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-swagger/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</div> </a> <a class="next" href="/blog/spring-boot-basics/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期","description":"整理 Spring Boot 3 整合 WebSocket 的要点：原生 WebSocket 与 STOMP 选型、消息路由前缀设计、WebSocket 配置类、群聊 @MessageMapping/@SendTo、点对点 convertAndSendToUser、断开事件监听与会话属性、机器人防死循环、定时推送、SockJS 降级、XSS 防护，以及 SimpleBroker 单机限制与集群中继方案。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-websocket/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

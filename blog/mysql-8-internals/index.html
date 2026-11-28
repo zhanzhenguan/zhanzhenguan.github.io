@@ -1,0 +1,424 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="基于 MySQL 8.0 梳理写 SQL 时背后发生的底层决策：优化器成本模型（磁盘/内存/CPU 成本）、统计信息采样误差与直方图、EXPLAIN ANALYZE 估算与实测对比；索引条件下推 ICP 的价值、生效边界与常见误读；覆盖索引与 Using index、主键天然覆盖、长主键放大二级索引；filesort 内存/落盘本质、索引有序性复用、8.0.20 废弃 max_length_for_sort_data、降序索引；深分页 LIMIT offset,n 原理、延迟关联与游标分页取舍；MVCC 版本链与 ReadView、RC/RR 快照时机、间隙锁性质与插入意向锁；在线 DDL 的 COPY/INPLACE/INSTANT 算法、INSTANT 版本边界与 64 行版本上限、MDL 锁事故链、pt-osc 与 gh-ost 影子表方案。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="MySQL 七个底层机制：优化器成本、索引下推、覆盖索引、filesort、深分页、MVCC 与在线 DDL"><meta property="og:description" content="基于 MySQL 8.0 梳理写 SQL 时背后发生的底层决策：优化器成本模型（磁盘/内存/CPU 成本）、统计信息采样误差与直方图、EXPLAIN ANALYZE 估算与实测对比；索引条件下推 ICP 的价值、生效边界与常见误读；覆盖索引与 Using index、主键天然覆盖、长主键放大二级索引；filesort 内存/落盘本质、索引有序性复用、8.0.20 废弃 max_length_for_sort_data、降序索引；深分页 LIMIT offset,n 原理、延迟关联与游标分页取舍；MVCC 版本链与 ReadView、RC/RR 快照时机、间隙锁性质与插入意向锁；在线 DDL 的 COPY/INPLACE/INSTANT 算法、INSTANT 版本边界与 64 行版本上限、MDL 锁事故链、pt-osc 与 gh-ost 影子表方案。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/mysql-8-internals/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>MySQL 七个底层机制：优化器成本、索引下推、覆盖索引、filesort、深分页、MVCC 与在线 DDL</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/mysql/">MySQL</a>  <span class="sep">/</span> <span class="current">MySQL 七个底层机制：优化器成本、索引下推、覆盖索引、filesort、深分页、MVCC 与在线 DDL</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>MySQL 七个底层机制：优化器成本、索引下推、覆盖索引、filesort、深分页、MVCC 与在线 DDL</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 13 分钟</span> <span>· 4355 字</span> <span class="meta-tags"> <a class="tag" href="/tags/mysql/">#MySQL</a><a class="tag" href="/tags/68051bf4/">#数据库</a><a class="tag" href="/tags/2dcc2a9e/">#优化器</a><a class="tag" href="/tags/b271e427/">#索引</a><a class="tag" href="/tags/mvcc/">#MVCC</a><a class="tag" href="/tags/ddl/">#DDL</a><a class="tag" href="/tags/612aadfa/">#底层机制</a> </span> </div> </header>   <p>日常写 SQL 只负责说”要什么”，怎么拿数据由 MySQL 自己决定；它每个决定的依据来自我们给的 SQL、索引、表结构和数据分布。这一篇梳理 MySQL 拿数据时背后的七个底层机制，基于 <strong>MySQL 8.0</strong> 编写，部分参数与命令在其他版本可能不同。</p>
+<h2 id="一优化器选的是它以为最便宜的索引">一、优化器：选的是”它以为最便宜”的索引</h2>
+<p>我们写的是声明式 SQL，优化器拿到的却是一堆统计数字——它做的是<strong>估算</strong>，不是精确计算。这两者的差别，正是慢 SQL 的主要来源。</p>
+<h3 id="11-成本模型三笔账">1.1 成本模型三笔账</h3>
+<table>
+<thead>
+<tr>
+<th>成本项</th>
+<th>什么时候产生</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>磁盘读成本（<code>io_block_read_cost</code>）</td>
+<td>从磁盘读一个页</td>
+</tr>
+<tr>
+<td>内存读成本（<code>memory_block_read_cost</code>）</td>
+<td>从缓冲池读一个页（默认约为磁盘读的 1/4）</td>
+</tr>
+<tr>
+<td>CPU 成本（<code>row_evaluate_cost</code>、<code>key_compare_cost</code> 等）</td>
+<td>要比较多少行、要过滤多少行</td>
+</tr>
+</tbody>
+</table>
+<p>优化器枚举可能的执行路径，挑总成本最低的那条。问题在于：这些成本按”估计行数”算出，而估计行数来自索引统计信息——统计信息不准，选出的路就是错的。</p>
+<h3 id="12-统计信息为什么会不准">1.2 统计信息为什么会不准</h3>
+<p>InnoDB 索引统计默认持久化（<code>innodb_stats_persistent = ON</code>），靠<strong>随机抽样若干索引页</strong>（<code>innodb_stats_persistent_sample_pages</code>，默认 20 页）推算整个索引的区分度。估算失准主要来自两件事：</p>
+<ul>
+<li><strong>基数采样误差</strong>：抽 20 页看到的”不同值个数”未必等于真实基数；优化器对等值条件的估算公式是 <code>总行数 ÷ 基数</code>，基数一偏，行数就跟着偏；</li>
+<li><strong>均匀分布假设</strong>：优化器默认每个取值出现的行数大致相同，只有建了直方图才会看真实分布。</li>
+</ul>
+<p>两者叠加就可能挑错路：比如 <code>user_id</code> 平均每个用户一万行，某个大客户自己就有四十万行——按平均值估，代价被严重低估。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 重新采样统计信息（会短暂加锁，大表谨慎）</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">ANALYZE </span><span style="color:#D73A49;--shiki-dark:#F97583">TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 更精准：给"没索引但参与 WHERE 过滤"的列建直方图</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">ANALYZE </span><span style="color:#D73A49;--shiki-dark:#F97583">TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#D73A49;--shiki-dark:#F97583"> HISTOGRAM</span><span style="color:#D73A49;--shiki-dark:#F97583"> ON</span><span style="color:#D73A49;--shiki-dark:#F97583"> status</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, channel </span><span style="color:#D73A49;--shiki-dark:#F97583">WITH</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 64</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> BUCKETS;</span></span></code></pre>
+<p>直方图直接刻画列值分布，比索引采样更接近真实分布。当某个没建索引的列承担关键过滤、而优化器总估错行数时，直方图是第一个该试的手段。</p>
+<h3 id="13-怎么知道估算错得多离谱">1.3 怎么知道估算错得多离谱</h3>
+<p>8.0.18 之前只能靠 <code>SHOW SESSION STATUS LIKE 'Handler_read%'</code> 这类计数器反推；8.0.18 起有了 <code>EXPLAIN ANALYZE</code>——把语句真正执行一遍，把估算值和实测值并排打印出来：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">EXPLAIN ANALYZE</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_no, amount </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10086</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#D73A49;--shiki-dark:#F97583"> status</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>-> Filter: (t_order.`status` = 1) (cost=31652 rows=12) (actual time=0.083..795 rows=37 loops=1)</span></span>
+<span class="line"><span>-> Index lookup on t_order using idx_user_id (user_id=10086)</span></span>
+<span class="line"><span>   (cost=31652 rows=86317) (actual time=0.076..795 rows=42183 loops=1)</span></span></code></pre>
+<p>输出是树形（<code>FORMAT=TREE</code> 是唯一支持格式），每行对应一个迭代器：<code>cost</code> 是估的代价，<code>actual time</code> 是实际耗时（首行..全部行，ms），<code>loops</code> 是执行次数；<strong><code>rows</code> 出现两次——前面是优化器估的，后面是实际的</strong>（<code>loops > 1</code> 时那是每轮平均值，总行数还要乘 <code>loops</code>）。</p>
+<p>关键看同一位置的两个 <code>rows</code>：内层估 86317、实际 42183，差 2 倍；上一层 Filter 估 12、实际 37，差 3 倍。比率偏差大的一层说明统计信息不可信，绝对行数偏差大的一层才真正决定 SQL 慢在哪。差得越离谱（尤其一个数量级以上），说明不是索引不好，而是优化器对数据分布一无所知——该补统计信息、建直方图、改写 SQL，而不是继续堆索引。</p>
+<blockquote>
+<p>注意：<code>EXPLAIN ANALYZE</code> 会真正执行语句。它对多表 <code>UPDATE</code>/<code>DELETE</code> 也支持，跑下去会真改数据（单表 DML 不在支持范围内，会报 <code>ERROR 1288</code>），生产环境别随手跑。</p>
+</blockquote>
+<p><img src="/blog/mysql-8-internals/mysql-8-internals-01.png" alt="优化器成本估算"></p>
+<h2 id="二索引下推联合索引为什么只用了第一列">二、索引下推：联合索引为什么只用了第一列</h2>
+<p>假设有索引 <code>(zipcode, lastname, firstname)</code>，查询是：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> people</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> zipcode </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '95054'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> lastname </span><span style="color:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '%etrunia%'</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  AND</span><span style="color:#D73A49;--shiki-dark:#F97583"> address</span><span style="color:#D73A49;--shiki-dark:#F97583"> LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '%Main Street%'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>三个条件待遇完全不同：</p>
+<table>
+<thead>
+<tr>
+<th>条件</th>
+<th>能不能定位索引</th>
+<th>能不能提前过滤</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>zipcode = '95054'</code></td>
+<td>✅ 等值匹配，直接定位</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>lastname LIKE '%etrunia%'</code></td>
+<td>❌ 前导通配符，无法定位</td>
+<td>✅ <strong>lastname 在索引里</strong></td>
+</tr>
+<tr>
+<td><code>address LIKE '%Main Street%'</code></td>
+<td>❌</td>
+<td>❌ address 不在索引里</td>
+</tr>
+</tbody>
+</table>
+<p><code>lastname</code> 虽不能”定位”，但值存在索引条目上；<code>address</code> 不在索引里，索引条目上根本没有它。</p>
+<h3 id="21-icp-的价值减少回表">2.1 ICP 的价值：减少回表</h3>
+<p>这就是 <strong>Index Condition Pushdown（ICP，索引条件下推）</strong>，MySQL 5.6 引入、默认开启。价值只有一个：<strong>减少回表次数</strong>。回表是随机 IO，是索引路线上最贵的一步，能少读一行就是一行。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">EXPLAIN </span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> people</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> zipcode </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '95054'</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> lastname </span><span style="color:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> '%etrunia%'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- Extra: Using index condition</span></span></code></pre>
+<h3 id="22-icp-帮不上忙的三个边界">2.2 ICP 帮不上忙的三个边界</h3>
+<table>
+<thead>
+<tr>
+<th>边界</th>
+<th>说明</th>
+<th>后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>条件里的列必须在索引里</td>
+<td>只推”索引列”上的条件</td>
+<td><code>address</code> 这种不在索引里的列推不下去</td>
+</tr>
+<tr>
+<td>只对二级索引有意义</td>
+<td>聚簇索引整行数据本来就在引擎里，谈不上”下推”</td>
+<td>主键查询上 ICP 没有收益</td>
+</tr>
+<tr>
+<td>只作用于 range / ref / eq_ref / ref_or_null</td>
+<td>全表扫描没有”索引条目”可推</td>
+<td><code>ALL</code> 类型用不上</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>读 EXPLAIN 的常见误读：<strong><code>Using index condition</code> 是”条件下推到引擎层了”，不是”不用回表了”</strong>。把它当成覆盖索引，会以为已经优化完了，实际问题还在。</p>
+</blockquote>
+<h2 id="三覆盖索引把回表彻底省掉">三、覆盖索引：把回表彻底省掉</h2>
+<p>二级索引上 <code>user_id = 10086</code> 只找到主键值，要拿 <code>order_no</code>、<code>amount</code> 还得拿主键去聚簇索引再查一次——一次索引查找可能变成几万次随机 IO。消除思路很直白：<strong>查询要的列全都在二级索引里，就根本不用回表。</strong></p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 已有联合索引 idx_user_status (user_id, status)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 要取的 order_no、amount 不在索引里 → 必须回表</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">EXPLAIN </span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_no, amount </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10086</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 要取的列全在索引里 → 覆盖索引，全程不回表</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">EXPLAIN </span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id, </span><span style="color:#D73A49;--shiki-dark:#F97583">status</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10086</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- Extra: Using index</span></span></code></pre>
+<p><code>Using index</code> 就是覆盖索引的标志。它不是”用了一个索引”，而是”查询需要的列全都在索引里”。</p>
+<h3 id="31-为什么查主键列天然就是覆盖">3.1 为什么查主键列天然就是覆盖</h3>
+<p>InnoDB 二级索引叶子节点存的不是行地址，而是<strong>索引列 + 主键值</strong>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- id 是主键，本身就存在 idx_user_id 的叶子上 → 不用回表</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">EXPLAIN </span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10086</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- Extra: Using index</span></span></code></pre>
+<p>这条规则很实用：所有”先按条件查主键、再拿主键做别的事”的写法，天然是覆盖索引，也是后面深分页解法的基础。</p>
+<h3 id="32-代价每个二级索引都拖着主键走">3.2 代价：每个二级索引都拖着主键走</h3>
+<p>覆盖索引不是免费的——<strong>主键越长，所有二级索引就越大</strong>。用 <code>CHAR(36)</code> 的 UUID 做主键，在 utf8mb4 下每条二级索引记录都要背上这 144 字节：索引变大、一个页装的条目变少、树变高、IO 变多。这也是”自增小整数主键优于 UUID”最底层的原因——它不只影响聚簇索引的插入顺序，还成倍放大到每一个二级索引上。</p>
+<h3 id="33-extra-高频标识对照">3.3 Extra 高频标识对照</h3>
+<table>
+<thead>
+<tr>
+<th><code>Extra</code> 标识</th>
+<th>真实含义</th>
+<th>常见误读</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Using index</code></td>
+<td>覆盖索引，不需要回表</td>
+<td>——（这个才是好消息）</td>
+</tr>
+<tr>
+<td><code>Using index condition</code></td>
+<td>条件下推到引擎层，<strong>仍要回表</strong></td>
+<td>❌ 误当成覆盖索引</td>
+</tr>
+<tr>
+<td><code>Using where</code></td>
+<td>拿到行之后还要在 Server 层过滤</td>
+<td>常被当成”用上了索引”</td>
+</tr>
+<tr>
+<td><code>Using filesort</code></td>
+<td>需要额外排序，索引用不上顺序</td>
+<td>❌ 误当成”用到了排序文件”</td>
+</tr>
+<tr>
+<td><code>Using temporary</code></td>
+<td>内部临时表（常见于 group by、distinct、union）</td>
+<td>——</td>
+</tr>
+</tbody>
+</table>
+<p>想知道联合索引用到了几列，看 <code>key_len</code>：它等于参与定位的列宽之和，只用到第一列时就等于第一列宽度。</p>
+<p><img src="/blog/mysql-8-internals/mysql-8-internals-02.png" alt="索引路线与回表"></p>
+<h2 id="四filesortorder-by-的成本花在哪">四、filesort：ORDER BY 的成本花在哪</h2>
+<p>看到 <code>filesort</code>，很多人第一反应是”要写磁盘了”。这个名字起得不好——<strong>它可能全程都在内存里完成，一个字节都不落盘。</strong></p>
+<h3 id="41-什么时候出现">4.1 什么时候出现</h3>
+<p>排序能不能免费，取决于索引的有序性能不能被复用：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- idx_user_created (user_id, created_at)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ✅ 索引本身已按 (user_id, created_at) 有序，定位 + 排序一步到位</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">EXPLAIN </span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10086</span><span style="color:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> created_at </span><span style="color:#D73A49;--shiki-dark:#F97583">DESC</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- ❌ 排序键和索引顺序对不上，只能自己排</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">EXPLAIN </span><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10086</span><span style="color:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> amount </span><span style="color:#D73A49;--shiki-dark:#F97583">DESC</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- Extra: Using filesort</span></span></code></pre>
+<p>判断规则一句：<strong><code>ORDER BY</code> 的列能不能接在等值条件列之后、构成索引的一个连续前缀。</strong> 能，顺序就是白送的；不能，就得自己排。</p>
+<p>一旦要自己排，成本分两段。监控上有个指标专门盯第二段：<code>Sort_merge_passes</code>。这个值持续增长，说明排序已经在落盘归并了（<code>SHOW SESSION STATUS LIKE 'Sort%'</code> 可看到）。</p>
+<blockquote>
+<p><strong>版本变化（最容易写错）</strong>：网上大量文章还在教”调小 <code>max_length_for_sort_data</code>，强制走双路排序”——这套说法在 <strong>8.0.20 之后已彻底失效</strong>。该变量（worklog WL#13600）已废弃，排序算法改由优化器自己决定，可变长字段用打包（packed addons）方式放进排序缓冲区。另外从 8.0.12 起，排序缓冲区是<strong>按需增长</strong>的，不再一上来就把 <code>sort_buffer_size</code> 分配满。</p>
+</blockquote>
+<h3 id="42-消除-filesort-的两种手法">4.2 消除 filesort 的两种手法</h3>
+<p><strong>手法一：把排序键接进联合索引。</strong> 收益最高——<code>WHERE user_id = ? ORDER BY created_at DESC</code> 配 <code>(user_id, created_at)</code>，定位和排序一次搞定。</p>
+<p><strong>手法二：方向不一致时用降序索引。</strong> 这是 8.0 才有的能力。<code>ORDER BY status ASC, created_at DESC</code> 用普通索引 <code>(user_id, status, created_at)</code> 做不到（第三列方向反了），而 8.0 的降序索引可以精确匹配：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">ADD</span><span style="color:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> idx_mixed (user_id, </span><span style="color:#D73A49;--shiki-dark:#F97583">status</span><span style="color:#D73A49;--shiki-dark:#F97583"> ASC</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, created_at </span><span style="color:#D73A49;--shiki-dark:#F97583">DESC</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<p>8.0 之前没有降序索引，“两列排序方向混排”是老版本绕不过去的坎；8.0 上这道坎已经没了。</p>
+<h2 id="五深分页limit-1000000-10-为什么越翻越慢">五、深分页：<code>LIMIT 1000000, 10</code> 为什么越翻越慢</h2>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 已有二级索引 idx_created (created_at)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> created_at </span><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1000000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">10</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>这条 SQL 只返回 10 行，却可能比全表扫描还慢。<code>LIMIT offset, n</code> 的语义是”先取前 offset + n 行，丢掉前 offset 行，返回剩下 n 行”，所以必须先真的把那 1000010 行读出来。更麻烦的是：排序键落在二级索引上时，走索引能省一次排序，代价却是这一百万行里每一行都要回表一次。</p>
+<h3 id="51-方案一延迟关联">5.1 方案一：延迟关联</h3>
+<p>既然白扫不可避免，就让白扫不带着回表一起做。利用”查主键天然是覆盖索引”：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> o.</span><span style="color:#D73A49;--shiki-dark:#F97583">*</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order o</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">  SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> created_at </span><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1000000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">10</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">) t </span><span style="color:#D73A49;--shiki-dark:#F97583">ON</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">id</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> t</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">id</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">created_at</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>内层子查询只取 <code>id</code>，而 <code>id</code> 就存在 <code>idx_created</code> 叶子上，全程在索引里走、<strong>不回表</strong>；把 offset 的巨大开销压缩成一次顺序索引扫描后，再拿 10 个主键回表取完整数据——总共只有 10 次回表。</p>
+<h3 id="52-方案二游标分页">5.2 方案二：游标分页</h3>
+<p>如果翻页场景允许”只能往后翻”，连那 100 万行的索引扫描都能省掉：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 记住上一页最后一行的 id，下一页从它之后开始</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">></span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1000000</span><span style="color:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p><code>WHERE id > ?</code> 配合聚簇索引直接定位起点，这是唯一一种代价与页码无关的方案。这里拿 <code>id</code> 举例，换成 <code>created_at</code> 也一样——只是 <code>created_at</code> 可能重复，得把 <code>id</code> 一起带上比较，保证游标唯一且有序。</p>
+<h3 id="53-取舍">5.3 取舍</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>时间稳定性</th>
+<th>能否跳页</th>
+<th>适用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>原始 <code>LIMIT offset, n</code></td>
+<td>❌ 越翻越慢</td>
+<td>✅</td>
+<td>页码小、数据量小的场景</td>
+</tr>
+<tr>
+<td>延迟关联</td>
+<td>⚠️ 仍随 offset 增长（但只扫索引）</td>
+<td>✅</td>
+<td>必须跳页、offset 不太大的场景</td>
+</tr>
+<tr>
+<td>游标分页</td>
+<td>✅ 与页码无关</td>
+<td>❌ 只能顺序往后</td>
+<td>信息流、日志、增量拉取</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>延迟关联有一个前提——<code>ORDER BY</code> 的列在索引里。如果排序本身要走 <code>filesort</code>，内层子查询就变不成”纯索引扫描”，收益会大幅缩水。这两个机制连在一起，不能只挑一个用。</p>
+</blockquote>
+<h2 id="六mvcc-与间隙锁同一行两个事务看到的可能不是同一版本">六、MVCC 与间隙锁：同一行，两个事务看到的可能不是同一版本</h2>
+<p>反直觉的事实：在 InnoDB 里，你读到的这一行很可能不是磁盘上那一行。原因是 undo log——每次修改一行，InnoDB 把旧值写进 undo log，用回滚指针把版本串成一条链。</p>
+<p>每行隐藏两个字段：<code>DB_TRX_ID</code>（最后一次修改它的事务 ID）和 <code>DB_ROLL_PTR</code>（指向 undo 里上一个版本）。读到某一行、而当前版本对你”不可见”时，InnoDB 顺链往回找，直到找到你能看见的版本。</p>
+<p>判断”能不能看见”靠 ReadView，核心是四个数字：<code>m_ids</code>（建快照那一刻还没提交的事务 ID 列表）、<code>min_trx_id</code>（列表最小值）、<code>max_trx_id</code>（下一个将分配的事务 ID）、<code>creator_trx_id</code>（我自己）。</p>
+<h3 id="61-rc-和-rr-的差别就是快照什么时候建">6.1 RC 和 RR 的差别，就是快照什么时候建</h3>
+<table>
+<thead>
+<tr>
+<th>隔离级别</th>
+<th>ReadView 建立时机</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>READ COMMITTED</td>
+<td><strong>每次</strong> <code>SELECT</code> 都新建一个</td>
+<td>同一事务两次查询可能看到不同结果（不可重复读）</td>
+</tr>
+<tr>
+<td>REPEATABLE READ（默认）</td>
+<td>事务里<strong>第一次</strong>读时建立，之后一直复用</td>
+<td>整个事务看到同一个版本快照</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>RR 的”可重复读”不是靠锁实现的，是靠”快照只用一次”实现的。读的一致性靠 MVCC，写的一致性才靠锁。</p>
+</blockquote>
+<h3 id="62-幻读靠间隙锁挡">6.2 幻读靠间隙锁挡</h3>
+<p>快照解决了”读到什么”，但解决不了：我锁住的行，会不会在我锁的时候旁边又被人插进来一行。</p>
+<p>RR 下，<code>UPDATE</code>/<code>DELETE</code>/<code>SELECT ... FOR UPDATE</code> 用 <strong>next-key lock</strong>，是”记录锁 + 间隙锁”的组合。间隙锁有几个反直觉性质：</p>
+<ul>
+<li><strong>间隙锁之间互不冲突</strong>：两个事务可以同时持有同一个间隙的 gap lock，因为共同目标只是”阻止插入”——直到有人真往间隙插数据才会互相等；</li>
+<li><strong>唯一索引 + 唯一等值条件时，不锁间隙</strong>：唯一索引上不可能再插一个同样的值，锁没必要延伸到间隙；</li>
+<li><strong>RC 下间隙锁基本关闭</strong>，只在外键约束检查和唯一键冲突检测时才用。代价是幻读会回来——更好的并发和更少死锁，换的是丢失 RR 的幻读防护，需自行权衡。</li>
+</ul>
+<h3 id="63-最典型的事故形态">6.3 最典型的事故形态</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> t_order </span><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#D73A49;--shiki-dark:#F97583"> status</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> order_no </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'A123'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- order_no 上没索引</span></span></code></pre>
+<p>没有索引就不能”只锁一行”，引擎只能扫描整个聚簇索引，把扫过的范围全部加上 next-key lock——别的会话想往表里插任何一行，都会卡在间隙锁上。这是”更新一行却把表锁死”最典型的原因。</p>
+<blockquote>
+<p>插入一行之前，InnoDB 要先在目标间隙加一个<strong>插入意向锁</strong>（insert intention lock，间隙锁的特殊形式）；间隙已被别的事务 gap lock 占着，插入就得等。线上突然出现一片”插入超时”时，第一件事就该看有没有哪个事务持着大范围间隙锁没提交。</p>
+</blockquote>
+<h2 id="七在线-ddlalter-table-到底锁不锁表">七、在线 DDL：ALTER TABLE 到底锁不锁表</h2>
+<p>“锁不锁表”这个问题本身问得不准确。真正该问三件事：要不要重建表、期间能不能并发写、会不会被前面的事务堵住。</p>
+<p>MySQL 8.0 上 DDL 有三种算法，成本差了三个数量级：</p>
+<table>
+<thead>
+<tr>
+<th>算法</th>
+<th>做法</th>
+<th>是否重建表</th>
+<th>期间并发 DML</th>
+<th>典型操作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>COPY</code></td>
+<td>建新表，逐行拷贝数据</td>
+<td>✅ 是</td>
+<td>❌ 禁止</td>
+<td>改列类型、改字符集</td>
+</tr>
+<tr>
+<td><code>INPLACE</code></td>
+<td>在原表上就地完成</td>
+<td>视操作而定</td>
+<td>✅ 多数可（<code>LOCK=NONE</code>）</td>
+<td>加/删二级索引、改索引名</td>
+</tr>
+<tr>
+<td><code>INSTANT</code></td>
+<td>只改元数据</td>
+<td>❌ 否</td>
+<td>✅ 可</td>
+<td>加列、删列（8.0.12 / 8.0.29 起）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="71-instant-的边界比以为的窄">7.1 INSTANT 的边界比以为的窄</h3>
+<p><code>INSTANT</code> 代价和表大小彻底解耦，几亿行加一列也是秒级，但能力被版本切开：</p>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>起始版本</th>
+<th>约束</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>在表<strong>末尾</strong>加列</td>
+<td>8.0.12</td>
+<td>表不能用 <code>COMPRESSED</code> 行格式、不能有全文索引</td>
+</tr>
+<tr>
+<td>在<strong>任意位置</strong>加列、删除列</td>
+<td>8.0.29</td>
+<td>同上；单条 <code>ALTER</code> 不能和其他不支持 INSTANT 的动作混用</td>
+</tr>
+</tbody>
+</table>
+<p>临时表和数据字典表空间里的表都不支持 <code>INSTANT</code>；<code>ALGORITHM=INSTANT</code> 只能配 <code>LOCK=DEFAULT</code>；加自增列时不允许并发 DML。</p>
+<p>原理是只改数据字典、不动任何数据行，老数据行靠<strong>行版本</strong>解析。每张表最多 <strong>64 个行版本</strong>，可以查出来：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> NAME</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, TOTAL_ROW_VERSIONS</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> information_schema</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">INNODB_TABLES</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#D73A49;--shiki-dark:#F97583"> NAME</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'test/t_order'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>一旦撞到 64，就必须重建一次表才能继续用 INSTANT——这就是”为什么我的 INSTANT 忽然不 INSTANT 了”的答案。</p>
+<blockquote>
+<p><strong>版本变化</strong>：8.0.29 的即时加/删列引入了新的 redo 日志格式，<strong>打破向后兼容</strong>：老版本 MySQL、旧版 Percona XtraBackup 都无法直接处理（8.0.29 初期还有崩溃恢复相关的数据损坏缺陷，Percona 后续做了修复）。升级路径和备份工具版本要一起规划。</p>
+</blockquote>
+<h3 id="72-真正让你锁表的通常不是-ddl-本身">7.2 真正让你”锁表”的通常不是 DDL 本身</h3>
+<p><code>ALTER TABLE</code> 在执行开始和结束的两个瞬间，需要拿到 <strong>MDL_EXCLUSIVE</strong>（元数据排他锁）。为拿到它，DDL 得等的不是一个事务提交，而是<strong>所有持有 MDL_SHARED 的会话都退出</strong>——任何一句还没结束的普通查询，都持有 MDL_SHARED。</p>
+<p>事故链是：<strong>DDL 只等了一个长事务，但它后面排着的所有查询全都在等 DDL。</strong> 排查时看这两张表：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 是谁在挡着 DDL / 有没有长事务</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> performance_schema</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">metadata_locks</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> OBJECT_NAME </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 't_order'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> trx_id, trx_started, trx_mysql_thread_id</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> information_schema</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">innodb_trx</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> trx_started </span><span style="color:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 5</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>做任何 DDL 之前，先确认没有长事务（尤其没有 <code>autocommit = 0</code> 之后忘了提交的连接），并给 DDL 会话设一个 <code>lock_wait_timeout</code>，让它等不到就自己退出，而不是一直堵着后面的查询。</p>
+<h3 id="73-超大表把重建挪到另一张影子表上">7.3 超大表：把重建挪到另一张影子表上</h3>
+<p>即便选 <code>INPLACE</code>，重建表本身对几亿行依然意味着巨大 IO 和主从延迟，而且同一张表上的 DDL 只有一条路，没有”分批做”的余地。第三方工具把这件事拆到另一张影子表上：</p>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>同步机制</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pt-online-schema-change</code></td>
+<td>在<strong>原表建触发器</strong></td>
+<td>兼容面广，但触发器给原表加了写放大</td>
+</tr>
+<tr>
+<td><code>gh-ost</code></td>
+<td>读 <strong>binlog</strong>（无触发器）</td>
+<td>原表零侵入，可暂停、可限速，运维更可控</td>
+</tr>
+</tbody>
+</table>
+<p>两者思路一致：把存量数据搬过去、增量变更持续同步过去，最后用一个短暂的 <code>RENAME</code> 完成切换——真正”锁定”原表的时间，从”整个重建过程”压缩到最后那次改名。</p>
+<p><img src="/blog/mysql-8-internals/mysql-8-internals-03.png" alt="影子表在线变更"></p>
+<h2 id="八小结">八、小结</h2>
+<p>七个机制说的是同一件事的两面：<strong>你写的是”要什么”，MySQL 干的是一堆你没说出口的决定。</strong> 慢往往不是因为写错了，而是不知道它在替你做哪些决定。</p>
+<p>三句最关键的认知：</p>
+<ol>
+<li><strong>优化器靠估算选路</strong>：统计信息不准就会选错索引；用直方图补分布、用 <code>EXPLAIN ANALYZE</code> 对比估算与实测，而不是盲目堆索引；</li>
+<li><strong>索引路线要分清三层</strong>：ICP 只是引擎层提前过滤、仍要回表；覆盖索引才真正免回表；filesort 看索引有序性能否复用；</li>
+<li><strong>写与变更各有底线</strong>：MVCC 用快照保证读一致性、间隙锁防幻读；在线 DDL 先排查 MDL 长事务，超大表走影子表工具把锁表时间压到最后改名。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳；版本行为以所用 MySQL 发行版实际文档为准，生产变更前先在测试环境验证。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>MySQL 七个底层机制：优化器成本、索引下推、覆盖索引、filesort、深分页、MVCC 与在线 DDL</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/mysql-8-internals/">https://zhanzhenguan.github.io/blog/mysql-8-internals/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-2-index/">MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</a> <p>整理 MySQL 索引原理与优化：索引作为有序数据结构减少磁盘 I/O；B+Tree 非叶子节点只存键、叶子节点双向链表相连的结构与四个核心优势、千万级表 2-3 层树高的 I/O 估算；聚簇索引叶子存整行、二级索引叶子存主键值；回表与覆盖索引；联合索引最左前缀原则与索引下推（MySQL 5.6+）；EXPLAIN 的 type/Extra/key/rows 判读；深分页延迟关联、JOIN 小表驱动大表、ORDER BY 索引排序、建索引六要六不要与 COUNT 优化。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-3-tx-mvcc/">深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC</a> <p>整理 MySQL 事务、锁与 MVCC 核心：事务定义与 Spring @Transactional；ACID 分别由 undo log、redo log、MVCC+锁等机制保证；脏读/不可重复读/幻读三种并发问题与四种隔离级别；行锁 S/X 兼容矩阵、记录锁/间隙锁/临键锁、死锁成因与三条避免法则；MVCC 多版本并发控制、隐藏事务 ID 与回滚指针、undo log 版本链、ReadView 可见性判断规则；RC 与 RR 的本质区别即 ReadView 生成时机。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-7-slow-sql/">慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写</a> <p>梳理慢 SQL 全流程优化：慢的阈值标准（用户接口 200ms、报表 5s、批量 30s）；慢查询日志开启参数、mysqldumpslow 汇总、SHOW PROCESSLIST 与 Druid/Arthas/pt-query-digest 工具；EXPLAIN 的 type/rows/Extra 判读；联合索引最左前缀与建索引口诀；六大索引失效场景（函数操作、隐式类型转换、左模糊、OR 非索引列、违反最左前缀、范围右边列失效）；SELECT *、深分页游标、WHERE 函数运算、IN/EXISTS/JOIN 改写；MyBatis N+1、超大 IN、动态 SQL 左模糊；三个实战优化案例与按 ROI 排序的优化优先级、排查清单。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/mysql-7-slow-sql/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写</div> </a> <a class="next" href="/blog/mysql-9-locks/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">MySQL 六种锁：表锁/MDL/意向锁、记录锁/间隙锁/临键锁与死锁排查</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"MySQL 七个底层机制：优化器成本、索引下推、覆盖索引、filesort、深分页、MVCC 与在线 DDL","description":"基于 MySQL 8.0 梳理写 SQL 时背后发生的底层决策：优化器成本模型（磁盘/内存/CPU 成本）、统计信息采样误差与直方图、EXPLAIN ANALYZE 估算与实测对比；索引条件下推 ICP 的价值、生效边界与常见误读；覆盖索引与 Using index、主键天然覆盖、长主键放大二级索引；filesort 内存/落盘本质、索引有序性复用、8.0.20 废弃 max_length_for_sort_data、降序索引；深分页 LIMIT offset,n 原理、延迟关联与游标分页取舍；MVCC 版本链与 ReadView、RC/RR 快照时机、间隙锁性质与插入意向锁；在线 DDL 的 COPY/INPLACE/INSTANT 算法、INSTANT 版本边界与 64 行版本上限、MDL 锁事故链、pt-osc 与 gh-ost 影子表方案。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/mysql-8-internals/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

@@ -1,0 +1,163 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Java 开发视角的 MySQL 基础认知：知识体系图谱、Server 层与存储引擎层分层架构、一条 SELECT 的连接器/分析器/优化器/执行器流程、MySQL 8.0 移除查询缓存、UPDATE 涉及的 Buffer Pool 与 undo/redo/binlog 日志链路、InnoDB 与 MyISAM 在事务/行锁/外键/崩溃恢复/MVCC/聚簇索引/COUNT(*) 上的差异，以及生产环境为何默认选 InnoDB。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比"><meta property="og:description" content="整理 Java 开发视角的 MySQL 基础认知：知识体系图谱、Server 层与存储引擎层分层架构、一条 SELECT 的连接器/分析器/优化器/执行器流程、MySQL 8.0 移除查询缓存、UPDATE 涉及的 Buffer Pool 与 undo/redo/binlog 日志链路、InnoDB 与 MyISAM 在事务/行锁/外键/崩溃恢复/MVCC/聚簇索引/COUNT(*) 上的差异，以及生产环境为何默认选 InnoDB。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/mysql-1-basics/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/mysql/">MySQL</a>  <span class="sep">/</span> <span class="current">MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 4 分钟</span> <span>· 1174 字</span> <span class="meta-tags"> <a class="tag" href="/tags/mysql/">#MySQL</a><a class="tag" href="/tags/68051bf4/">#数据库</a><a class="tag" href="/tags/innodb/">#InnoDB</a><a class="tag" href="/tags/e778d61a/">#后端</a><a class="tag" href="/tags/0796ba76/">#基础</a> </span> </div> </header>   <p>这是 MySQL 专题第一篇，从整体架构入手，先建立「SQL 到 MySQL 内部经历了什么」的全局认识，再对比两类常见存储引擎。面向 Java 开发的基础梳理，代码与流程为通用示例。</p>
+<h2 id="一mysql-知识体系图谱">一、MySQL 知识体系图谱</h2>
+<p>整套 MySQL 知识体系可分五块，本篇对应基础入门部分：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>Java 开发者 MySQL 知识体系</span></span>
+<span class="line"><span>├── 基础入门（本篇）</span></span>
+<span class="line"><span>│   ├── MySQL 架构（Server 层 + 引擎层）</span></span>
+<span class="line"><span>│   ├── SQL 执行流程（一条 SELECT 经历了什么）</span></span>
+<span class="line"><span>│   └── 存储引擎对比（InnoDB vs MyISAM）</span></span>
+<span class="line"><span>├── 核心进阶</span></span>
+<span class="line"><span>│   ├── 索引原理（B+Tree、聚簇、覆盖、最左前缀）</span></span>
+<span class="line"><span>│   ├── SQL 优化（EXPLAIN、分页、JOIN、排序）</span></span>
+<span class="line"><span>│   └── 索引设计最佳实践</span></span>
+<span class="line"><span>├── 深入理解</span></span>
+<span class="line"><span>│   ├── 事务（ACID、隔离级别）</span></span>
+<span class="line"><span>│   ├── 锁（行锁、间隙锁、临键锁、死锁）</span></span>
+<span class="line"><span>│   └── MVCC（多版本并发控制）</span></span>
+<span class="line"><span>├── 高级架构</span></span>
+<span class="line"><span>│   ├── 日志系统（redo log、binlog、undo log）</span></span>
+<span class="line"><span>│   ├── 主从复制与读写分离</span></span>
+<span class="line"><span>│   └── 分库分表（ShardingSphere）</span></span>
+<span class="line"><span>└── 实战面试</span></span>
+<span class="line"><span>    ├── MyBatis-Plus 最佳实践</span></span>
+<span class="line"><span>    ├── 连接池配置与慢 SQL 排查</span></span>
+<span class="line"><span>    ├── 开发规范</span></span>
+<span class="line"><span>    └── 高频面试题精讲</span></span></code></pre>
+<p>完全的数据库小白建议按顺序阅读；已有基础可以跳到感兴趣的模块。</p>
+<h2 id="二mysql-架构概述">二、MySQL 架构概述</h2>
+<h3 id="21-我们写的-sql-去哪了">2.1 我们写的 SQL 去哪了</h3>
+<p>Java 侧通常通过 MyBatis / MyBatis-Plus 发出一条 <code>SELECT ...</code>，这条 SQL 到达 MySQL 之后，需要先理解 MySQL 的整体分层架构，才能说清它经历了什么。</p>
+<h3 id="22-整体架构server-层--引擎层">2.2 整体架构：Server 层 + 引擎层</h3>
+<p>MySQL 采用<strong>分层架构</strong>，核心分两层：</p>
+<ul>
+<li><strong>Server 层</strong>：负责连接管理、SQL 解析、查询优化等，不依赖具体引擎，相当于「脑子」；</li>
+<li><strong>存储引擎层</strong>：负责数据的实际存储和读取，采用插件式架构（像可插拔的 U 盘）。InnoDB 是目前的默认引擎，也是重点讨论对象。</li>
+</ul>
+<p>类比：把 MySQL 想象成一个餐厅——Server 层是大堂经理（接待客人、理解需求、规划上菜顺序），存储引擎是后厨（真正烹饪食物）。大堂经理不管后厨用什么锅，只负责把顾客订单翻译成后厨能理解的指令。</p>
+<p><img src="/blog/mysql-1-basics/mysql-1-basics-01.png" alt="MySQL 分层架构"></p>
+<h3 id="23-一条-select-的执行流程">2.3 一条 SELECT 的执行流程</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>这条语句在 MySQL 内部的完整旅程：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>Java 程序</span></span>
+<span class="line"><span>  ↓ JDBC 驱动发送 SQL</span></span>
+<span class="line"><span>连接器 —— 建立连接、验证用户名密码、检查权限</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>分析器 —— 词法分析（识别 SELECT、FROM 等关键字）</span></span>
+<span class="line"><span>        → 语法分析（检查 SQL 语法是否正确）</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>优化器 —— 选择用哪个索引、决定 JOIN 顺序 → 生成执行计划</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>执行器 —— 调用存储引擎接口，逐行读取数据</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>返回结果给客户端</span></span></code></pre>
+<blockquote>
+<p>面试小贴士：MySQL 8.0 移除了查询缓存。一旦表有写操作，缓存就失效，高并发写入场景下维护缓存的成本反而比直接查还要大，这是个「好心办坏事」的设计。</p>
+</blockquote>
+<p><img src="/blog/mysql-1-basics/mysql-1-basics-02.png" alt="SQL 执行流程"></p>
+<h3 id="24-一条-update-的完整旅程">2.4 一条 UPDATE 的完整旅程</h3>
+<p>查询只读不写，更新语句则涉及非常重要的日志机制。以 <code>UPDATE user SET name = '张三' WHERE id = 1;</code> 为例：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>执行器找到 id=1 的行</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>InnoDB 将数据页加载到 Buffer Pool（内存缓冲区）</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>写入 undo log（记录旧值，用于回滚）</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>修改 Buffer Pool 中的数据页（name 改成新值）</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>写入 redo log buffer（记录某数据页的修改）</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>写入 binlog（Server 层记录：该表该行字段从旧值变成新值）</span></span>
+<span class="line"><span>  ↓</span></span>
+<span class="line"><span>事务提交完成</span></span></code></pre>
+<p><strong>Buffer Pool</strong> 是 InnoDB 的内存缓存区，相当于 Redis 之于数据库：数据先从磁盘读到内存，修改也在内存中完成，后台再慢慢刷回磁盘。这是数据库支撑高并发的关键设计之一。三类日志（undo / redo / binlog）的详细作用在后续日志与架构篇展开，这里先建立印象。</p>
+<h2 id="三存储引擎对比innodb-vs-myisam">三、存储引擎对比：InnoDB vs MyISAM</h2>
+<h3 id="31-为什么要关心存储引擎">3.1 为什么要关心存储引擎</h3>
+<p>建表语句里常见 <code>ENGINE = InnoDB</code>，就是指定存储引擎：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> `</span><span style="color:#6F42C1;--shiki-dark:#B392F0">user</span><span style="color:#24292E;--shiki-dark:#E1E4E8">` (</span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#9ECBFF">  `id`</span><span style="color:#D73A49;--shiki-dark:#F97583"> BIGINT</span><span style="color:#D73A49;--shiki-dark:#F97583"> PRIMARY KEY</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#9ECBFF">  `name`</span><span style="color:#D73A49;--shiki-dark:#F97583"> VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">50</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">) ENGINE </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> InnoDB;</span></span></code></pre>
+<p>MySQL 支持多种存储引擎，但 Java 开发绝大多数情况下都在和 InnoDB 打交道。</p>
+<h3 id="32-核心差异一览">3.2 核心差异一览</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>InnoDB</th>
+<th>MyISAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>事务支持</td>
+<td>支持 ACID</td>
+<td>不支持</td>
+</tr>
+<tr>
+<td>锁粒度</td>
+<td>基于索引的行级锁</td>
+<td>只有表级锁</td>
+</tr>
+<tr>
+<td>外键</td>
+<td>支持</td>
+<td>不支持</td>
+</tr>
+<tr>
+<td>崩溃恢复</td>
+<td>redo log 保证</td>
+<td>数据可能丢失</td>
+</tr>
+<tr>
+<td>MVCC（多版本）</td>
+<td>支持</td>
+<td>不支持</td>
+</tr>
+<tr>
+<td>全文索引</td>
+<td>MySQL 5.6+ 支持</td>
+<td>原生支持</td>
+</tr>
+<tr>
+<td>聚簇索引</td>
+<td>数据按主键物理排序</td>
+<td>数据和索引分开存储</td>
+</tr>
+<tr>
+<td><code>COUNT(*)</code> 效率</td>
+<td>需要扫描索引</td>
+<td>直接读表元数据，极快</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-为什么生产环境一律用-innodb">3.3 为什么生产环境一律用 InnoDB</h3>
+<p>这是面试中的送分题，三个核心原因：</p>
+<ol>
+<li><strong>事务安全是第一需求</strong>：订单、支付等关键业务场景，没有事务的数据操作就像没有安全带的高速赛车——出事就是大事；</li>
+<li><strong>并发性能</strong>：行级锁意味着不同用户可以同时修改不同的行，互不干扰；MyISAM 的表级锁则是一人改表、全员排队；</li>
+<li><strong>崩溃恢复</strong>：服务器突然断电时，InnoDB 靠 redo log 能把已提交的数据找回来，MyISAM 只能依赖 luck。</li>
+</ol>
+<p><img src="/blog/mysql-1-basics/mysql-1-basics-03.png" alt="InnoDB 与 MyISAM 对比"></p>
+<p><strong>一句话总结</strong>：MyISAM 适合的场景极其有限（只读日志表、数据仓库类场景），面向 Java 业务开发，选 InnoDB 就对了。</p>
+<h2 id="四小结">四、小结</h2>
+<p>学完本篇，应该能回答四个问题：MySQL 分几层架构、Server 层和引擎层分别负责什么；一条 SELECT / UPDATE 在内部经历了哪些步骤；InnoDB 比 MyISAM 强在哪里、为什么是默认选择；Buffer Pool 是做什么的。</p>
+<p>三个最基础的认知：</p>
+<ol>
+<li><strong>分层是骨架</strong>：Server 层做连接、解析、优化、执行，引擎层负责实际存储，二者解耦、插件式可替换；</li>
+<li><strong>执行有顺序</strong>：SELECT 走连接器 → 分析器 → 优化器 → 执行器；UPDATE 在内存 Buffer Pool 上改，配合 undo/redo/binlog 保证可回滚与可恢复；</li>
+<li><strong>业务默认 InnoDB</strong>：事务、行锁、外键、崩溃恢复、MVCC 是它相对 MyISAM 的核心优势。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳；后续索引、事务锁、MVCC、日志与高可用架构分篇展开。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/mysql-1-basics/">https://zhanzhenguan.github.io/blog/mysql-1-basics/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-9-locks/">MySQL 六种锁：表锁/MDL/意向锁、记录锁/间隙锁/临键锁与死锁排查</a> <p>系统梳理 InnoDB 并发控制中的六类锁：全局/表级/行级三层粒度；InnoDB 行锁加在索引记录上而非数据行；全局读锁与备份锁、LOCK TABLES、元数据锁 MDL（SHARED_READ/WRITE/EXCLUSIVE、事务持有到提交、长事务堵 DDL）、意向锁 IS/IX 的标记作用与兼容性；记录锁、间隙锁、临键锁（左开右闭）的加锁规则速查表；没走索引的 UPDATE 退化为扫描全表封锁、二级索引同时锁二级与主键、RC semi-consistent read；间隙锁 + 插入意向锁死锁闭环、死锁检测与超时参数、SHOW ENGINE INNODB STATUS 定位、固定加锁顺序与业务层重试；线上查锁四条命令与开发检查清单。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-2-index/">MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</a> <p>整理 MySQL 索引原理与优化：索引作为有序数据结构减少磁盘 I/O；B+Tree 非叶子节点只存键、叶子节点双向链表相连的结构与四个核心优势、千万级表 2-3 层树高的 I/O 估算；聚簇索引叶子存整行、二级索引叶子存主键值；回表与覆盖索引；联合索引最左前缀原则与索引下推（MySQL 5.6+）；EXPLAIN 的 type/Extra/key/rows 判读；深分页延迟关联、JOIN 小表驱动大表、ORDER BY 索引排序、建索引六要六不要与 COUNT 优化。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-3-tx-mvcc/">深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC</a> <p>整理 MySQL 事务、锁与 MVCC 核心：事务定义与 Spring @Transactional；ACID 分别由 undo log、redo log、MVCC+锁等机制保证；脏读/不可重复读/幻读三种并发问题与四种隔离级别；行锁 S/X 兼容矩阵、记录锁/间隙锁/临键锁、死锁成因与三条避免法则；MVCC 多版本并发控制、隐藏事务 ID 与回滚指针、undo log 版本链、ReadView 可见性判断规则；RC 与 RR 的本质区别即 ReadView 生成时机。</p> </li> </ul> </section><nav class="post-nav"> <span></span> <a class="next" href="/blog/mysql-2-index/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比","description":"整理 Java 开发视角的 MySQL 基础认知：知识体系图谱、Server 层与存储引擎层分层架构、一条 SELECT 的连接器/分析器/优化器/执行器流程、MySQL 8.0 移除查询缓存、UPDATE 涉及的 Buffer Pool 与 undo/redo/binlog 日志链路、InnoDB 与 MyISAM 在事务/行锁/外键/崩溃恢复/MVCC/聚簇索引/COUNT(*) 上的差异，以及生产环境为何默认选 InnoDB。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/mysql-1-basics/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

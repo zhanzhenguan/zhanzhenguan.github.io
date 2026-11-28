@@ -1,0 +1,273 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 MySQL 事务、锁与 MVCC 核心：事务定义与 Spring @Transactional；ACID 分别由 undo log、redo log、MVCC+锁等机制保证；脏读/不可重复读/幻读三种并发问题与四种隔离级别；行锁 S/X 兼容矩阵、记录锁/间隙锁/临键锁、死锁成因与三条避免法则；MVCC 多版本并发控制、隐藏事务 ID 与回滚指针、undo log 版本链、ReadView 可见性判断规则；RC 与 RR 的本质区别即 ReadView 生成时机。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC"><meta property="og:description" content="整理 MySQL 事务、锁与 MVCC 核心：事务定义与 Spring @Transactional；ACID 分别由 undo log、redo log、MVCC+锁等机制保证；脏读/不可重复读/幻读三种并发问题与四种隔离级别；行锁 S/X 兼容矩阵、记录锁/间隙锁/临键锁、死锁成因与三条避免法则；MVCC 多版本并发控制、隐藏事务 ID 与回滚指针、undo log 版本链、ReadView 可见性判断规则；RC 与 RR 的本质区别即 ReadView 生成时机。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/mysql-3-tx-mvcc/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/mysql/">MySQL</a>  <span class="sep">/</span> <span class="current">深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 5 分钟</span> <span>· 1602 字</span> <span class="meta-tags"> <a class="tag" href="/tags/mysql/">#MySQL</a><a class="tag" href="/tags/68051bf4/">#数据库</a><a class="tag" href="/tags/9f82401d/">#事务</a><a class="tag" href="/tags/75580fe8/">#锁</a><a class="tag" href="/tags/mvcc/">#MVCC</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>   <p>这一篇承接索引篇，进入 MySQL 中最”硬核”的模块：事务、锁与 MVCC。它们也是面试中区分初级与高级开发的分水岭。面向 Java 开发梳理概念与机制，SQL、代码为通用示例。</p>
+<h2 id="一事务让一组操作同生共死">一、事务：让一组操作同生共死</h2>
+<h3 id="11-事务是什么">1.1 事务是什么</h3>
+<p>事务（Transaction）是一组要么<strong>全部成功</strong>、要么<strong>全部失败</strong>的数据库操作。用 Spring 声明式事务表示：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Transactional</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> transfer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Long fromId, Long toId, BigDecimal amount) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    accountMapper.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">decrease</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(fromId, amount); </span><span style="color:#6A737D;--shiki-dark:#6A737D">// 扣钱</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    // 如果这里抛异常，扣的钱会自动退回</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    accountMapper.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">increase</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(toId, amount);   </span><span style="color:#6A737D;--shiki-dark:#6A737D">// 加钱</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>@Transactional</code> 告诉 Spring：这两个操作绑定成一个事务，任何一个失败，前面的操作也全部撤销。</p>
+<h3 id="12-acid事务的四个铁律">1.2 ACID：事务的四个铁律</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>通俗解释</th>
+<th>数据库怎么做到的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>原子性 Atomicity</strong></td>
+<td>要么全做，要么全不做</td>
+<td>undo log（记录反操作，失败时回滚）</td>
+</tr>
+<tr>
+<td><strong>一致性 Consistency</strong></td>
+<td>数据始终满足业务规则</td>
+<td>其他三个特性共同保证</td>
+</tr>
+<tr>
+<td><strong>隔离性 Isolation</strong></td>
+<td>并发事务互不干扰</td>
+<td>MVCC + 锁</td>
+</tr>
+<tr>
+<td><strong>持久性 Durability</strong></td>
+<td>提交后数据不丢失</td>
+<td>redo log（崩溃后用它恢复）</td>
+</tr>
+</tbody>
+</table>
+<p>一个帮助理解的类比：事务像 Git 的 commit——没提交前修改都在暂存区，随时可撤销；<code>COMMIT</code> 相当于 push，提交后永久保存；<code>ROLLBACK</code> 相当于 <code>git reset --hard</code>，回到修改前状态。</p>
+<p><img src="/blog/mysql-3-tx-mvcc/mysql-3-tx-mvcc-01.png" alt="事务 ACID"></p>
+<h2 id="二隔离级别解决并发的度">二、隔离级别：解决并发的”度”</h2>
+<h3 id="21-三种并发问题">2.1 三种并发问题</h3>
+<p>假设有两个事务 T1、T2 同时运行，可能出现三类问题：</p>
+<p><strong>脏读（Dirty Read）</strong>：读到了别人<strong>没提交</strong>的数据。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>T1：修改 name='张三' → '李四'，还没提交</span></span>
+<span class="line"><span>T2：读到了 '李四'          ← 脏读</span></span>
+<span class="line"><span>T1：回滚，name 还是 '张三'</span></span>
+<span class="line"><span>T2 读到的 '李四' 是从未真正存在过的脏数据</span></span></code></pre>
+<p><strong>不可重复读（Non-Repeatable Read）</strong>：同一事务内两次读同一行，结果被别人<strong>修改</strong>后不同。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>T1：第一次读 name = '张三'</span></span>
+<span class="line"><span>T2：修改 name = '李四' 并提交</span></span>
+<span class="line"><span>T1：第二次读 name = '李四'  ← 不可重复读</span></span></code></pre>
+<p><strong>幻读（Phantom Read）</strong>：有人<strong>插入/删除</strong>数据，导致结果集行数变化。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>T1：SELECT * FROM user WHERE age > 20 → 5 行</span></span>
+<span class="line"><span>T2：INSERT INTO user(age) VALUES(25)  → 插入并提交</span></span>
+<span class="line"><span>T1：SELECT * FROM user WHERE age > 20 → 6 行  ← 幻读</span></span></code></pre>
+<p>快速区分：脏读读了未提交数据；不可重复读是同一行被改；幻读是结果集行数因增删而变。</p>
+<h3 id="22-四种隔离级别">2.2 四种隔离级别</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 查看当前级别</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> @@transaction_isolation;</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 设置级别</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#D73A49;--shiki-dark:#F97583"> SESSION</span><span style="color:#D73A49;--shiki-dark:#F97583"> TRANSACTION</span><span style="color:#D73A49;--shiki-dark:#F97583"> ISOLATION</span><span style="color:#D73A49;--shiki-dark:#F97583"> LEVEL</span><span style="color:#D73A49;--shiki-dark:#F97583"> READ</span><span style="color:#D73A49;--shiki-dark:#F97583"> COMMITTED</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<table>
+<thead>
+<tr>
+<th>隔离级别</th>
+<th>脏读</th>
+<th>不可重复读</th>
+<th>幻读</th>
+<th>实现方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>READ UNCOMMITTED</td>
+<td>✅ 发生</td>
+<td>✅ 发生</td>
+<td>✅ 发生</td>
+<td>几乎没人用</td>
+</tr>
+<tr>
+<td>READ COMMITTED</td>
+<td>❌ 不会</td>
+<td>✅ 发生</td>
+<td>✅ 发生</td>
+<td>每次查询生成新 ReadView</td>
+</tr>
+<tr>
+<td><strong>REPEATABLE READ</strong>（MySQL 默认）</td>
+<td>❌ 不会</td>
+<td>❌ 不会</td>
+<td>部分解决</td>
+<td>事务开始时生成一个 ReadView + 间隙锁</td>
+</tr>
+<tr>
+<td>SERIALIZABLE</td>
+<td>❌ 不会</td>
+<td>❌ 不会</td>
+<td>❌ 不会</td>
+<td>读写全加锁，完全串行</td>
+</tr>
+</tbody>
+</table>
+<p><strong>常见追问：为什么 MySQL 默认是 RR 而不是 RC？</strong></p>
+<p>历史原因：早期 binlog 只有 STATEMENT 格式（记录 SQL 语句本身），RC 级别下主库和从库执行同一条 SQL 可能得到不同结果。现在虽推荐 ROW 格式，但 RR 已成为事实标准；另外 RR 配合间隙锁能解决幻读，RC 做不到。</p>
+<h2 id="三锁机制并发控制的交警">三、锁机制：并发控制的”交警”</h2>
+<h3 id="31-锁的分类地图">3.1 锁的分类地图</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>┌── 共享锁（S 锁 / 读锁）：允许别人读，不让别人写</span></span>
+<span class="line"><span>┌── 行锁 ─┤</span></span>
+<span class="line"><span>│        └── 排他锁（X 锁 / 写锁）：别人既不能读也不能写</span></span>
+<span class="line"><span>│</span></span>
+<span class="line"><span>├── 记录锁（Record Lock）：锁住一行</span></span>
+<span class="line"><span>├── 间隙锁（Gap Lock）：锁住行与行之间的间隙</span></span>
+<span class="line"><span>└── 临键锁（Next-Key Lock）：记录锁 + 间隙锁</span></span>
+<span class="line"><span>锁 ───┤</span></span>
+<span class="line"><span>│        ┌── 意向共享锁（IS 锁）</span></span>
+<span class="line"><span>└── 表锁 ─┼── 意向排他锁（IX 锁）</span></span>
+<span class="line"><span>         └── 自增锁（AUTO-INC）</span></span></code></pre>
+<h3 id="32-共享锁与排他锁">3.2 共享锁与排他锁</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 共享锁（S 锁）：读时加，允许别人也读，但不允许别人写</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> LOCK </span><span style="color:#D73A49;--shiki-dark:#F97583">IN</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SHARE MODE;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 排他锁（X 锁）：写时加，别人既不能读也不能写</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> FOR</span><span style="color:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- INSERT / UPDATE / DELETE 默认就加 X 锁</span></span></code></pre>
+<p>锁兼容矩阵：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>S 锁</th>
+<th>X 锁</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>S 锁</strong></td>
+<td>✅ 可以共存</td>
+<td>❌ S 与 X 冲突</td>
+</tr>
+<tr>
+<td><strong>X 锁</strong></td>
+<td>❌ X 排斥一切</td>
+<td>❌ X 排斥一切</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-临键锁next-key-lock防幻读的利器">3.3 临键锁（Next-Key Lock）：防幻读的利器</h3>
+<p>在 REPEATABLE READ 隔离级别下，InnoDB 默认使用<strong>临键锁 = 记录锁 + 间隙锁</strong>。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 假设 user 表有 id = 5, 10, 15 三行</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 间隙分布：(-∞, 5), [5, 10), [10, 15), [15, +∞)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#D73A49;--shiki-dark:#F97583"> *</span><span style="color:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> user </span><span style="color:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">></span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 8</span><span style="color:#D73A49;--shiki-dark:#F97583"> AND</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 13</span><span style="color:#D73A49;--shiki-dark:#F97583"> FOR</span><span style="color:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p>实际加锁范围：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>[5, 10) + [10, 15) + {记录 10}</span></span>
+<span class="line"><span>  ↑间隙锁   ↑间隙锁      ↑记录锁</span></span>
+<span class="line"><span>效果：既不能修改 id=10 的行，也不能在 5~15 之间插入新行</span></span></code></pre>
+<p>为什么需要间隙锁？如果没有它，虽然锁住了 id=10 这行，但别的事务可能在查询范围内插入一条 id=11 的记录，让结果集在不知情下被改变——这就是幻读。间隙锁像在每个行之间拉了一条”警戒线”。</p>
+<p><img src="/blog/mysql-3-tx-mvcc/mysql-3-tx-mvcc-02.png" alt="行锁区间"></p>
+<h3 id="34-死锁并发编程的经典陷阱">3.4 死锁：并发编程的经典陷阱</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 事务 A</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> account </span><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">-</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 锁住 id=1</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> account </span><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">+</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 等待锁 id=2</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 事务 B（同时执行）</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> account </span><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">-</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 锁住 id=2</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> account </span><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">+</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 等待锁 id=1</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- → 死锁：A 等 B 放锁，B 等 A 放锁，循环等待</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- InnoDB 检测到死锁后回滚其中一个事务，报错：</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- Deadlock found when trying to get lock; try restarting transaction</span></span></code></pre>
+<p><strong>避免死锁的三条黄金法则</strong>：</p>
+<ol>
+<li><strong>按相同顺序访问资源</strong>：所有事务都按 id 升序操作，锁的获取顺序一致就不会死锁；</li>
+<li><strong>缩短事务时间</strong>：事务里不要放 RPC 调用、文件 IO 等耗时操作，锁持有时间越短，死锁概率越低；</li>
+<li><strong>适当降低隔离级别</strong>：RC 级别下间隙锁较少，死锁率也相应降低。</li>
+</ol>
+<h2 id="四mvcc读写不冲突的秘密">四、MVCC：读写不冲突的秘密</h2>
+<h3 id="41-一句话理解-mvcc">4.1 一句话理解 MVCC</h3>
+<p>MVCC（Multi-Version Concurrency Control，多版本并发控制）的核心思想：<strong>读操作不加锁，通过查看数据的旧版本来获取一致性视图</strong>。</p>
+<p>就像编辑一个 Word 文档：你正在改的内容别人看不到，别人看到的还是旧版本，保存之后别人才看到新版。MVCC 在数据库里做了同一件事。</p>
+<h3 id="42-隐藏字段与版本链">4.2 隐藏字段与版本链</h3>
+<p>InnoDB 每行数据都带有平时看不到的隐藏列，最关键的两个：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>┌────┬──────┬─────┬───────────┬──────────────┐</span></span>
+<span class="line"><span>│ id │ name │ age │ DB_TRX_ID │ DB_ROLL_PTR  │</span></span>
+<span class="line"><span>├────┼──────┼─────┼───────────┼──────────────┤</span></span>
+<span class="line"><span>│ 1  │ 张三 │ 25  │ 100       │ 0x...        │</span></span>
+<span class="line"><span>└────┴──────┴─────┴───────────┴──────────────┘</span></span>
+<span class="line"><span>       ↑ 最近修改这一行的事务 ID   ↑ 指向 undo log 的指针</span></span></code></pre>
+<blockquote>
+<p>表若没有主键，InnoDB 还会生成隐藏的行 ID（<code>DB_ROW_ID</code>）作为聚簇索引键。</p>
+</blockquote>
+<p>每次更新数据，旧版本存入 <strong>undo log</strong>，通过 <code>DB_ROLL_PTR</code> 指针串成版本链：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>当前行（name='王五', trx=300）</span></span>
+<span class="line"><span>  ↓ DB_ROLL_PTR</span></span>
+<span class="line"><span>undo log v1（name='李四', trx=200）</span></span>
+<span class="line"><span>  ↓ DB_ROLL_PTR</span></span>
+<span class="line"><span>undo log v2（name='张三', trx=100）</span></span></code></pre>
+<h3 id="43-readview事务的快照相机">4.3 ReadView：事务的”快照相机”</h3>
+<p>ReadView 是事务读取数据时创建的快照，记录这个瞬间有哪些事务仍在活跃（还没提交）：</p>
+<table>
+<thead>
+<tr>
+<th>ReadView 属性</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>m_ids</code></td>
+<td>创建快照时所有”活跃中”的事务 ID</td>
+</tr>
+<tr>
+<td><code>min_trx_id</code></td>
+<td>m_ids 中最小的那个</td>
+</tr>
+<tr>
+<td><code>max_trx_id</code></td>
+<td>下一个待分配的事务 ID</td>
+</tr>
+<tr>
+<td><code>creator_trx_id</code></td>
+<td>创建这个 ReadView 的事务自己</td>
+</tr>
+</tbody>
+</table>
+<h3 id="44-可见性判断该看到哪个版本">4.4 可见性判断：该看到哪个版本</h3>
+<p>当一条数据的 <code>trx_id = 150</code>，当前事务按以下规则判断：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>规则 1：trx_id == creator_trx_id  → ✅ 自己的修改当然可见</span></span>
+<span class="line"><span>规则 2：trx_id &#x3C; min_trx_id       → ✅ 修改者在快照前就提交了</span></span>
+<span class="line"><span>规则 3：trx_id >= max_trx_id      → ❌ 修改者在快照后才开始，不可见</span></span>
+<span class="line"><span>规则 4：trx_id IN m_ids           → ❌ 修改者在快照时还没提交，不可见</span></span>
+<span class="line"><span>规则 5：以上都不满足               → ✅ 修改者在快照前已提交，可见</span></span></code></pre>
+<h3 id="45-rc-vs-rrreadview-生成时机决定一切">4.5 RC vs RR：ReadView 生成时机决定一切</h3>
+<p>两种隔离级别的本质区别就是 <strong>ReadView 的生成时机</strong>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>READ COMMITTED（读已提交）：</span></span>
+<span class="line"><span>  事务中每次 SELECT → 生成新的 ReadView</span></span>
+<span class="line"><span>  → 能看到别的事务新提交的数据 → 导致"不可重复读"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>REPEATABLE READ（可重复读）：</span></span>
+<span class="line"><span>  事务中第一次 SELECT → 生成 ReadView，之后复用</span></span>
+<span class="line"><span>  → 看不到别的事务新提交的数据 → 保证"可重复读"</span></span></code></pre>
+<p><img src="/blog/mysql-3-tx-mvcc/mysql-3-tx-mvcc-03.png" alt="MVCC 版本链与快照视图"></p>
+<p>理解了 MVCC 再回看三种并发问题会豁然开朗：脏读、不可重复读、幻读，本质上都是”事务在什么时候、看到了什么版本的数据”的问题。</p>
+<h2 id="五小结">五、小结</h2>
+<p>学完本篇，应能回答：ACID 四个特性分别由什么机制保证；脏读、不可重复读、幻读的区别；四种隔离级别各解决什么问题；S/X 锁兼容矩阵；临键锁如何防幻读、间隙锁锁住什么；死锁成因与避免方式；ReadView 如何判断可见性；RC 与 RR 的本质区别。</p>
+<p>三句最关键的认知：</p>
+<ol>
+<li><strong>ACID 各有机制兜底</strong>：原子性靠 undo log 回滚，持久性靠 redo log 恢复，隔离性由 MVCC 加锁共同实现；</li>
+<li><strong>锁处理写冲突，间隙锁补幻读</strong>：行锁分 S/X，临键锁 = 记录锁 + 间隙锁；按固定顺序访问、缩短事务是避免死锁的核心；</li>
+<li><strong>MVCC 让读写不互斥</strong>：读不加锁，靠版本链 + ReadView 判断可见性；RC 每次读新建快照，RR 首次读建快照后复用。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳；日志系统、主从复制与分库分表在下一篇展开。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/mysql-3-tx-mvcc/">https://zhanzhenguan.github.io/blog/mysql-3-tx-mvcc/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-9-locks/">MySQL 六种锁：表锁/MDL/意向锁、记录锁/间隙锁/临键锁与死锁排查</a> <p>系统梳理 InnoDB 并发控制中的六类锁：全局/表级/行级三层粒度；InnoDB 行锁加在索引记录上而非数据行；全局读锁与备份锁、LOCK TABLES、元数据锁 MDL（SHARED_READ/WRITE/EXCLUSIVE、事务持有到提交、长事务堵 DDL）、意向锁 IS/IX 的标记作用与兼容性；记录锁、间隙锁、临键锁（左开右闭）的加锁规则速查表；没走索引的 UPDATE 退化为扫描全表封锁、二级索引同时锁二级与主键、RC semi-consistent read；间隙锁 + 插入意向锁死锁闭环、死锁检测与超时参数、SHOW ENGINE INNODB STATUS 定位、固定加锁顺序与业务层重试；线上查锁四条命令与开发检查清单。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-1-basics/">MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</a> <p>整理 Java 开发视角的 MySQL 基础认知：知识体系图谱、Server 层与存储引擎层分层架构、一条 SELECT 的连接器/分析器/优化器/执行器流程、MySQL 8.0 移除查询缓存、UPDATE 涉及的 Buffer Pool 与 undo/redo/binlog 日志链路、InnoDB 与 MyISAM 在事务/行锁/外键/崩溃恢复/MVCC/聚簇索引/COUNT(*) 上的差异，以及生产环境为何默认选 InnoDB。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-2-index/">MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</a> <p>整理 MySQL 索引原理与优化：索引作为有序数据结构减少磁盘 I/O；B+Tree 非叶子节点只存键、叶子节点双向链表相连的结构与四个核心优势、千万级表 2-3 层树高的 I/O 估算；聚簇索引叶子存整行、二级索引叶子存主键值；回表与覆盖索引；联合索引最左前缀原则与索引下推（MySQL 5.6+）；EXPLAIN 的 type/Extra/key/rows 判读；深分页延迟关联、JOIN 小表驱动大表、ORDER BY 索引排序、建索引六要六不要与 COUNT 优化。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/mysql-2-index/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</div> </a> <a class="next" href="/blog/mysql-5-sharding/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">数据库分库分表策略全解：垂直/水平拆分、四种分片策略、落地姿势与连环坑</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"深入理解 MySQL：事务 ACID、隔离级别、锁机制与 MVCC","description":"整理 MySQL 事务、锁与 MVCC 核心：事务定义与 Spring @Transactional；ACID 分别由 undo log、redo log、MVCC+锁等机制保证；脏读/不可重复读/幻读三种并发问题与四种隔离级别；行锁 S/X 兼容矩阵、记录锁/间隙锁/临键锁、死锁成因与三条避免法则；MVCC 多版本并发控制、隐藏事务 ID 与回滚指针、undo log 版本链、ReadView 可见性判断规则；RC 与 RR 的本质区别即 ReadView 生成时机。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/mysql-3-tx-mvcc/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

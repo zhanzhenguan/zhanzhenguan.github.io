@@ -1,0 +1,346 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 基础与核心要点：基本概念与优缺点、手工搭建工程、核心注解、配置文件与属性注入、Starter 自动配置原理、日志与 Profile 多环境、spring.factories SPI，以及应用启动流程。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程"><meta property="og:description" content="整理 Spring Boot 基础与核心要点：基本概念与优缺点、手工搭建工程、核心注解、配置文件与属性注入、Starter 自动配置原理、日志与 Profile 多环境、spring.factories SPI，以及应用启动流程。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-basics/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</h1> <div class="meta"> <time datetime="2026-11-27T00:00:00.000Z">2026年11月27日</time>  <span>· 约 10 分钟</span> <span>· 3386 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/e778d61a/">#后端</a><a class="tag" href="/tags/b319e986/">#自动配置</a><a class="tag" href="/tags/starter/">#Starter</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li class="current">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程（本文）</li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇记录 Spring Boot 第一部分的基础与核心内容：从它解决了什么问题、怎么手工搭一个最小工程，到配置文件、属性注入、Starter 自动配置原理、日志与多环境配置，最后梳理应用启动流程。偏向学习笔记沉淀，方便以后复盘。</p>
+<h2 id="一基本概念与定位">一、基本概念与定位</h2>
+<h3 id="11-它解决什么问题">1.1 它解决什么问题</h3>
+<p>早期 Java 开发（Spring + 传统 XML）配置繁多、第三方技术集成成本高、部署流程重。Spring Boot 的核心理念是**“习惯优于配置”**：对常见场景内置一套习惯性默认配置，开发者无须手动堆砌大量 XML 与 Bean 装配，就能快速跑起一个独立运行、准生产级别的 Spring 应用。</p>
+<h3 id="12-优点与局限">1.2 优点与局限</h3>
+<p><strong>优点</strong></p>
+<ul>
+<li>纯 Java 配置方式，注解驱动，上手简单；</li>
+<li>配合各类 Starter 实现自动化配置，依赖与默认约定成套提供；</li>
+<li>打成可执行 Jar 包后，<code>java -jar</code> 即可部署运行。</li>
+</ul>
+<p><strong>局限</strong></p>
+<ul>
+<li>封装度较高，初期不容易看清底层装配过程；</li>
+<li>从传统 XML 配置迁移到 Java/注解配置，思维转变需要时间；</li>
+<li>部分 JavaConfig、自动配置相关问题资料较少，踩坑要靠读源码。</li>
+</ul>
+<h3 id="13-主要特性">1.3 主要特性</h3>
+<ul>
+<li>引导页面几秒即可生成一个项目骨架；</li>
+<li>可对外输出 REST API、WebSocket、Web、流式、定时任务等多种服务；</li>
+<li>内置简洁的安全策略集成；</li>
+<li>同时支持关系型与非关系型数据库；</li>
+<li>内嵌 Tomcat、Jetty、Undertow 等 Servlet 容器；</li>
+<li>提供开发工具包，支持热启动；</li>
+<li>自动管理依赖版本，自带应用监控；</li>
+<li>支持主流 IDE（IntelliJ IDEA、NetBeans 等）。</li>
+</ul>
+<h2 id="二核心功能">二、核心功能</h2>
+<ol>
+<li><strong>独立运行</strong>：以 Jar 包形式独立运行，<code>java -jar xx.jar</code> 启动，不依赖外部容器部署。</li>
+<li><strong>内嵌 Servlet 容器</strong>：可选内嵌 Tomcat、Jetty、Undertow，无须打成 War 包部署到外部容器。</li>
+<li><strong>Starter 简化 Maven 配置</strong>：提供一系列 starter pom 聚合常用依赖，引入后自动加载配套组件。</li>
+<li><strong>自动配置 Spring</strong>：根据类路径下的 Jar 包与类，自动为其装配 Bean；默认不覆盖的场景可再自定义自动配置。</li>
+<li><strong>准生产监控</strong>：基于 HTTP、SSH、Telnet 对运行时项目进行监控。</li>
+<li><strong>无代码生成、无 XML 配置</strong>：自动配置不是靠代码生成，而是通过条件注解（Spring 4.x 起的特性）实现，Java 配置 + 注解即可完成 Spring 装配。</li>
+</ol>
+<h2 id="三手工搭建一个最小工程">三、手工搭建一个最小工程</h2>
+<h3 id="31-maven-父级依赖">3.1 Maven 父级依赖</h3>
+<p>引入 <code>spring-boot-starter-parent</code> 作为父依赖后，项目即成为 Spring Boot 工程；它提供 Maven 默认依赖版本管理，常用依赖可以省略 <code>version</code> 标签。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">parent</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-parent&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>2.7.x&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">parent</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="32-web-启动器-starter-web">3.2 Web 启动器 starter-web</h3>
+<p><code>spring-boot-starter-web</code> 是 Web 开发核心依赖，一个依赖把构建 Web 应用所需组件聚合在一起：</p>
+<ul>
+<li><strong>Web 框架</strong>：Spring MVC，提供 <code>@Controller</code>、<code>@RequestMapping</code> 等注解；</li>
+<li><strong>内嵌服务器</strong>：默认 Tomcat，可切换 Jetty 或 Undertow；</li>
+<li><strong>JSON 处理</strong>：Jackson，自动完成对象与 JSON 的序列化/反序列化；</li>
+<li><strong>其他组件</strong>：自动配置、Actuator 监控相关、Validation 参数校验等。</li>
+</ul>
+<p>它还做了默认的 Web 自动配置：装配 <code>DispatcherServlet</code> 处理 HTTP 请求、支持内容协商（JSON/XML 等）、配置静态资源访问、提供默认错误页面与异常处理。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-web&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<p>引入前需要手动配置 Tomcat、Spring MVC、JSON 转换器；引入后零配置即可运行 Web 应用，版本兼容由启动器统一管理。</p>
+<p><img src="/blog/spring-boot-basics/spring-boot-basics-01.png" alt="starter-web 传递依赖结构"></p>
+<h3 id="33-打包插件">3.3 打包插件</h3>
+<p><code>spring-boot-maven-plugin</code> 在打包时引入依赖，<code>mvn package</code> 会把工程打成可直接运行的 Jar，默认执行目标是 <code>repackage</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">plugins</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">plugin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-maven-plugin&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">plugin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">plugins</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="34-入口类">3.4 入口类</h3>
+<p>Spring Boot 通常有一个命名 <code>*Application</code> 的入口类，<code>main</code> 方法是标准 Java 应用入口，通过 <code>SpringApplication.run(...)</code> 启动应用：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">SpringBootApplication</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SpringbootApplication</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">[] </span><span style="color:#E36209;--shiki-dark:#FFAB70">args</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        SpringApplication.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(SpringbootApplication.class, args);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>启动后默认访问 <code>http://localhost:8080/</code>；修改入口类中的方法内容需要重启服务才能生效。</p>
+<h2 id="四核心注解与配置文件">四、核心注解与配置文件</h2>
+<h3 id="41-入口类与-springbootapplication">4.1 入口类与 @SpringBootApplication</h3>
+<p><code>@SpringBootApplication</code> 是一个组合注解，主要由 <code>@Configuration</code>、<code>@EnableAutoConfiguration</code>、<code>@ComponentScan</code> 组合而成；拆开来也可以在入口类上分别使用这三个注解。</p>
+<ul>
+<li><code>@EnableAutoConfiguration</code>：让 Spring Boot 根据类路径中的 Jar 依赖进行自动配置；</li>
+<li><code>@ComponentScan</code>：默认扫描入口类所在包及其子包下的 Bean（JPA 项目还会扫描标注 <code>@Entity</code> 的实体类）；</li>
+<li>建议入口类放在 <code>groupId</code> 与 <code>artifactId</code> 组合的基础包名下，保证扫描范围覆盖到业务代码。</li>
+</ul>
+<p><strong>关闭特定自动配置</strong>：通过 <code>exclude</code> 参数排除不需要的自动配置类：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">SpringBootApplication</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">exclude</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {DataSourceAutoConfiguration.class})</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SpringbootApplication</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> { ... }</span></span></code></pre>
+<p><img src="/blog/spring-boot-basics/spring-boot-basics-02.png" alt="@SpringBootApplication 组合注解拆解"></p>
+<h3 id="42-全局配置文件">4.2 全局配置文件</h3>
+<p>Spring Boot 使用全局配置文件 <code>application.properties</code> 或 <code>application.yml</code>，放在 <code>src/main/resources</code> 或类路径的 <code>/config</code> 目录下，用于覆盖默认配置值。YAML 是以数据为中心的配置语言，具有面向对象的特征。</p>
+<p><strong>YAML 基本语法</strong></p>
+<ul>
+<li>大小写敏感；</li>
+<li>用缩进表示层级关系；</li>
+<li>缩进不能用 Tab，只能用空格；</li>
+<li>空格数量不重要，相同层级左对齐即可；</li>
+<li><code>#</code> 表示注释。</li>
+</ul>
+<p>常用配置项示例：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  application</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">payment-demo</span><span style="color:#6A737D;--shiki-dark:#6A737D">   # 应用名称，微服务注册、监控、日志追踪中使用</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">server</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  port</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">8090</span><span style="color:#6A737D;--shiki-dark:#6A737D">              # 服务器端口号</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  http2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    enabled</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#6A737D;--shiki-dark:#6A737D">        # 是否启用 HTTP/2，默认关闭</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  profiles</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    active</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">dev</span><span style="color:#6A737D;--shiki-dark:#6A737D">           # 指定生效的 Profile 名称</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  servlet</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    multipart</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      location</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">/tmp/upload</span><span style="color:#6A737D;--shiki-dark:#6A737D">   # 文件上传临时存储位置</span></span></code></pre>
+<p>几个易混配置的说明：</p>
+<ul>
+<li><strong><code>server.http2.enabled</code></strong>：控制内嵌服务器是否启用 HTTP/2。HTTP/2 通过多路复用、头部压缩、服务器推送等提升性能；启用需要客户端也支持，且通常要配合 HTTPS 满足浏览器安全要求。</li>
+<li><strong><code>spring.mvc.dispatch-options-request</code></strong>：控制是否把 HTTP OPTIONS 请求分发给 Controller 处理。为 <code>true</code> 时由控制器方法处理（无匹配则返回 405）；为 <code>false</code> 时由框架根据现有 <code>@RequestMapping</code> 自动生成 <code>Allow</code> 响应头并返回 200，不触发控制器。若启用了 CORS 跨域，OPTIONS 预检请求优先由 CORS 机制处理，该配置不再生效。</li>
+</ul>
+<h3 id="43-bootstrapyml-与-applicationyml-的区别">4.3 bootstrap.yml 与 application.yml 的区别</h3>
+<ul>
+<li><code>application</code> 用于 Spring Boot 项目自身的自动化配置；</li>
+<li><code>bootstrap</code> 是应用程序的父上下文，加载优先级高于 <code>application</code>，主要用于从外部资源加载配置信息、对本地外部配置文件解密属性；</li>
+<li>两个上下文共用同一个环境；<code>bootstrap</code> 中的属性优先加载，默认不能被本地相同配置覆盖；</li>
+<li><code>bootstrap</code> 主要在 Spring Cloud 场景（配置中心等）中使用。</li>
+</ul>
+<h3 id="44-配置文件加载优先级">4.4 配置文件加载优先级</h3>
+<p>外部配置都可用于覆盖默认值，优先级从高到低大致为：<strong>命令行参数 > 系统环境变量 > 配置文件（properties / yml）</strong>。命令行参数示例：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">java</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -jar</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> xx.jar</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> --server.port=9090</span></span></code></pre>
+<h2 id="五starter-机制">五、Starter 机制</h2>
+<h3 id="51-概念与特点">5.1 概念与特点</h3>
+<p>Starter 是一组特殊的 Maven 依赖，利用传递依赖解析，把完成某一功能所需的常用 Jar 包聚合到一起，对外提供统一的依赖入口。主要特点：</p>
+<ul>
+<li><strong>整合依赖</strong>：引入一个 Starter 即可获得某功能相关的整套依赖；</li>
+<li><strong>自动配置</strong>：根据项目依赖与环境自动完成配置，提供大部分常用场景的默认行为；</li>
+<li><strong>简化开发</strong>：预设大量配置，无须从零搭建应用；</li>
+<li><strong>可扩展</strong>：保留可扩展接口与机制，按需添加或修改配置项。</li>
+</ul>
+<h3 id="52-工作原理重点">5.2 工作原理（重点）</h3>
+<ol>
+<li>Spring Boot 启动时，到依赖的 Starter 包中查找 <code>META-INF/spring.factories</code> 文件，按配置扫描所依赖的 Jar 包；</li>
+<li>根据 <code>spring.factories</code> 加载对应的自动配置类（<code>AutoConfiguration</code>）；</li>
+<li>依据 <code>@Conditional</code> 系列注解判断条件，满足条件才装配 Bean 并注入 Spring 上下文。</li>
+</ol>
+<blockquote>
+<p>版本提示：Spring Boot 2.7 起，自动配置类注册方式逐步从 <code>spring.factories</code> 迁移到 <code>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</code>；老版本项目仍以 <code>spring.factories</code> 为准。</p>
+</blockquote>
+<p><img src="/blog/spring-boot-basics/spring-boot-basics-03.png" alt="Starter 自动配置流程"></p>
+<h3 id="53-常见官方-starter">5.3 常见官方 Starter</h3>
+<table>
+<thead>
+<tr>
+<th>Starter</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spring-boot-starter</code></td>
+<td>核心启动器，含自动配置、日志、YAML 支持</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-web</code></td>
+<td>Web 开发，含 Tomcat 与 Spring WebMVC</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-aop</code></td>
+<td>Spring AOP 与 AspectJ 面向切面</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-data-jpa</code></td>
+<td>JPA 支持（spring-data-jpa、spring-orm、Hibernate）</td>
+</tr>
+<tr>
+<td><code>mybatis-spring-boot-starter</code></td>
+<td>MyBatis 支持（第三方）</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-data-redis</code></td>
+<td>Redis 支持</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-jdbc</code></td>
+<td>JDBC 数据库支持</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-mail</code></td>
+<td>邮件发送</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-security</code></td>
+<td>Spring Security 安全框架</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-validation</code></td>
+<td>参数校验</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-amqp</code></td>
+<td>AMQP 消息队列集成</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-quartz</code></td>
+<td>Quartz 定时调度框架</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-websocket</code></td>
+<td>WebSocket 开发支持</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-logging</code></td>
+<td>默认日志框架 Logback</td>
+</tr>
+<tr>
+<td><code>spring-boot-starter-log4j</code></td>
+<td>切换 Log4j 日志框架</td>
+</tr>
+</tbody>
+</table>
+<p>除官方 Starter 外，社区也提供大量第三方 Starter，使用前确认其维护活跃度与版本兼容性。</p>
+<h3 id="54-兼容-xml-配置">5.4 兼容 XML 配置</h3>
+<p>Spring Boot 推荐零 XML 配置，但特殊要求下仍可通过 <code>@ImportResource</code> 加载传统 XML 配置文件：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">ImportResource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">({</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"classpath:some-context.xml"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"classpath:another-context.xml"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">})</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">SpringBootApplication</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SpringbootApplication</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> { ... }</span></span></code></pre>
+<h2 id="六外部配置与属性注入">六、外部配置与属性注入</h2>
+<h3 id="61-四种读取配置的方式">6.1 四种读取配置的方式</h3>
+<ol>
+<li><code>@PropertySource</code>：指定额外的 properties 配置文件；</li>
+<li><code>@Value</code>：逐个注入单个属性；</li>
+<li><code>Environment</code>：通过环境对象按 key 读取属性；</li>
+<li><code>@ConfigurationProperties</code>：类型安全地把一批属性绑定到 Bean。</li>
+</ol>
+<h3 id="62-value-注入单个属性">6.2 @Value 注入单个属性</h3>
+<p>在 <code>application.properties</code> 中定义属性后，直接用 <code>@Value</code> 注入：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="properties"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">book.name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=springboot</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">book.author</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=demo</span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Value</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"${book.name}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String bookName;</span></span></code></pre>
+<h3 id="63-类型安全配置-configurationproperties">6.3 类型安全配置 @ConfigurationProperties</h3>
+<p>通过 <code>@ConfigurationProperties</code> 把配置文件属性与一个 Bean 的字段关联，实现类型安全绑定；用 <code>prefix</code> 指定配置前缀，必要时用 <code>locations</code> 指定 properties 文件位置，Bean 可直接 <code>@Autowired</code> 注入使用：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Data</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">ConfigurationProperties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">prefix</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "book"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> BookProperties</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String name;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String author;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h2 id="七日志配置">七、日志配置</h2>
+<h3 id="71-默认日志框架">7.1 默认日志框架</h3>
+<p>Spring Boot 支持 JUL、Log4J、Log4J2、Logback 作为日志框架，控制台与文件输出均已预先配置；默认使用 <strong>Logback</strong>。</p>
+<p>日志级别从低到高：<code>TRACE &#x3C; DEBUG &#x3C; INFO &#x3C; WARN &#x3C; ERROR</code>（<code>FATAL</code> 属于 Log4j 体系，Logback 标准级别不含 FATAL）。</p>
+<h3 id="72-基础日志配置">7.2 基础日志配置</h3>
+<p>在 <code>application.properties</code> 中按包名配置级别、指定日志文件：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="properties"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">logging.level.org.springframework.web</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=DEBUG</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">logging.file.name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=logs/app.log</span></span></code></pre>
+<h3 id="73-logback-springxml-常用结构">7.3 logback-spring.xml 常用结构</h3>
+<p>在 <code>resources</code> 下新建 <code>logback-spring.xml</code> 即自动生效，常用标签与组件：</p>
+<ul>
+<li><code>contextName</code>：日志上下文名称，区分不同应用的记录；</li>
+<li><code>property</code>：定义变量，之后用 <code>${name}</code> 引用；</li>
+<li><code>logger</code>：设置某个包或类的日志级别与指定 Appender；</li>
+<li><code>root</code>：根 Logger，只有一个 <code>level</code> 属性；</li>
+<li><code>appender</code>：负责日志输出的组件。</li>
+</ul>
+<p>常用 Appender：</p>
+<ul>
+<li><code>ConsoleAppender</code>：输出到控制台；</li>
+<li><code>FileAppender</code>：输出到文件；</li>
+<li><code>RollingFileAppender</code>：滚动记录文件，满足条件后切换到新文件，是 <code>FileAppender</code> 的子类。</li>
+</ul>
+<p>过滤器（filter）返回三种枚举值：<code>DENY</code> 日志立即抛弃；<code>NEUTRAL</code> 交给下一个过滤器继续处理；<code>ACCEPT</code> 立即处理，不再经过剩余过滤器。常用过滤器：</p>
+<ul>
+<li><code>ThresholdFilter</code>：临界值过滤器，级别低于临界值则拒绝；</li>
+<li><code>LevelFilter</code>：按具体级别过滤，匹配与不匹配分别配置接收/拒绝行为。</li>
+</ul>
+<h2 id="八profile-多环境配置">八、Profile 多环境配置</h2>
+<p>Profile 用于针对不同环境提供不同配置，全局 Profile 文件命名为 <code>application-{profile}.properties</code>，例如 <code>application-prod.properties</code>。通过 <code>application.properties</code> 中的 <code>spring.profiles.active</code> 指定生效的 Profile：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="properties"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">spring.profiles.active</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=dev</span></span></code></pre>
+<p>示例：开发环境端口 <code>8888</code>，生产环境端口 <code>80</code>，分别写在 <code>application-dev.properties</code> 与 <code>application-prod.properties</code>，切换 <code>active</code> 值即切换对应环境配置。</p>
+<h2 id="九springfactories-与-spi-机制">九、spring.factories 与 SPI 机制</h2>
+<h3 id="91-概念与位置">9.1 概念与位置</h3>
+<p><code>spring.factories</code> 是 Spring 中的配置文件，用于实现 <strong>SPI（Service Provider Interface）</strong> 机制：通过配置方式注册 Spring 组件，无需在代码中显式声明。文件位置为 <code>src/main/resources/META-INF/spring.factories</code>，采用 Properties 格式。</p>
+<h3 id="92-工作原理">9.2 工作原理</h3>
+<p>Spring 通过 <code>SpringFactoriesLoader</code> 加载并解析该文件：</p>
+<ol>
+<li><strong>扫描阶段</strong>：启动时扫描 classpath 下所有 Jar 包中的 <code>META-INF/spring.factories</code>；</li>
+<li><strong>解析阶段</strong>：解析文件中的键值对配置；</li>
+<li><strong>加载阶段</strong>：按接口类型加载对应的实现类；</li>
+<li><strong>实例化阶段</strong>：通过反射创建实现类实例。</li>
+</ol>
+<p><img src="/blog/spring-boot-basics/spring-boot-basics-04.png" alt="SPI 加载四阶段"></p>
+<h3 id="93-主要应用场景">9.3 主要应用场景</h3>
+<ul>
+<li><strong>自动配置（AutoConfiguration）</strong>：Spring Boot 最核心的应用场景；</li>
+<li>应用上下文初始化器（ApplicationContextInitializer）；</li>
+<li>应用程序监听器（ApplicationListener）；</li>
+<li>失败分析器（FailureAnalyzer）。</li>
+</ul>
+<h3 id="94-自定义-starter-实践要点">9.4 自定义 Starter 实践要点</h3>
+<p>自定义 Starter 一般包含：自动配置类、配置属性绑定类、服务类，以及 <code>spring.factories</code>（或新版 <code>.imports</code>）注册；在其他项目引入该 Starter 后即可使用。实践建议：遵循命名规范、合理使用条件注解避免配置冲突、提供完整配置属性说明与测试。</p>
+<h2 id="十运行原理与启动流程">十、运行原理与启动流程</h2>
+<h3 id="101-查看自动配置报告">10.1 查看自动配置报告</h3>
+<p>Spring Boot 自动配置源码位于 <code>spring-boot-autoconfigure-xxx.jar</code>。想知道当前项目启用了哪些自动配置，可用以下方式查看报告：</p>
+<ul>
+<li>运行 Jar 时加 <code>--debug</code> 参数：<code>java -jar xx.jar --debug</code>；</li>
+<li>在配置文件中设置 <code>debug=true</code>；</li>
+<li>在 IDE 启动参数中加 <code>-Ddebug</code>。</li>
+</ul>
+<p>控制台中 <code>positive matches</code> 表示已启用的自动配置，<code>negative matches</code> 表示未启用的自动配置。</p>
+<h3 id="102-启动流程三阶段">10.2 启动流程三阶段</h3>
+<ol>
+<li><strong>准备阶段</strong>：加载应用初始设置、创建上下文，核心是 <code>SpringApplication.run()</code> 方法调用各初始化器完成准备工作；</li>
+<li><strong>上下文创建阶段</strong>：根据配置信息加载 Bean，核心是自动配置机制扫描 classpath 下的配置，自动加载并装配组件；</li>
+<li><strong>刷新上下文阶段</strong>：执行启动任务，包括创建 Web 服务器、加载配置、初始化组件，调用刷新机制装配核心组件；内嵌 Tomcat 就在此阶段启动。</li>
+</ol>
+<p>细分的关键步骤依次为：初始化监听器 → 发布 <code>ApplicationStartedEvent</code> → 装配参数与环境、判断是否 Web 环境 → 触发 <code>ApplicationEnvironmentPreparedEvent</code> → 按配置决定是否打印 Banner → 创建对应类型的 <code>ApplicationContext</code> → 装配上下文环境变量、注册初始化器与 Bean 名生成器 → 发布 <code>ApplicationPreparedEvent</code> → 注册启动参数与 Banner、加载资源 → 调用各 <code>RunListener</code> 的 <code>contextLoaded()</code> → 调用 <code>refresh()</code> 装配 BeanFactory 等核心组件 → 遍历执行 <code>CommandLineRunner</code> → 发布 <code>ApplicationReadyEvent</code>，服务就绪。</p>
+<p><img src="/blog/spring-boot-basics/spring-boot-basics-05.png" alt="应用启动阶段时序"></p>
+<h3 id="103-开启-spring-boot-特性的方式">10.3 开启 Spring Boot 特性的方式</h3>
+<ol>
+<li>继承 <code>spring-boot-starter-parent</code> 项目；</li>
+<li>导入 <code>spring-boot-dependencies</code> 依赖（不继承 parent 时的替代方式）。</li>
+</ol>
+<h2 id="十一小结">十一、小结</h2>
+<ul>
+<li>Spring Boot 用“习惯优于配置”把依赖聚合、默认装配、内嵌容器打包成开箱即用的工程，核心价值是降低搭建与部署成本；</li>
+<li><code>@SpringBootApplication</code> 是组合注解，自动配置由 <code>@EnableAutoConfiguration</code> 驱动；</li>
+<li>Starter 通过 <code>spring.factories</code>（新版 <code>.imports</code>）+ <code>@Conditional</code> 条件注解完成 Bean 装配；</li>
+<li>配置注入有 <code>@Value</code>、<code>@ConfigurationProperties</code>、<code>Environment</code>、<code>@PropertySource</code> 四种方式，多环境用 Profile 切换；</li>
+<li>理解启动三阶段与自动配置报告（positive / negative matches），是排查“某 Bean 为什么没装配”的入口。</li>
+</ul>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-basics/">https://zhanzhenguan.github.io/blog/spring-boot-basics/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-websocket/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</div> </a> <a class="next" href="/blog/spring-boot-web/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程","description":"整理 Spring Boot 基础与核心要点：基本概念与优缺点、手工搭建工程、核心注解、配置文件与属性注入、Starter 自动配置原理、日志与 Profile 多环境、spring.factories SPI，以及应用启动流程。","datePublished":"2026-11-27T00:00:00.000Z","dateModified":"2026-11-27T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-basics/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

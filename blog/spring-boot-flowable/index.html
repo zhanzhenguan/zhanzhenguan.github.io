@@ -1,0 +1,708 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 3 接入 Flowable 工作流的要点：版本基线（Boot 3 配 7.2.0，8.x 基于 Spring 7/Boot 4）、流程定义/部署/实例/任务/变量五概念与六大服务、业务表与 ACT_* 引擎表分表、process starter 选型、MySQL 自动建表与生产降级、BPMN 排他网关与动态审批人、自动部署目录、唯一键兜底并发重复提交、待办/审批/历史查询、全局异常映射 4xx、权限边界与前端调用链可视化。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹"><meta property="og:description" content="整理 Spring Boot 3 接入 Flowable 工作流的要点：版本基线（Boot 3 配 7.2.0，8.x 基于 Spring 7/Boot 4）、流程定义/部署/实例/任务/变量五概念与六大服务、业务表与 ACT_* 引擎表分表、process starter 选型、MySQL 自动建表与生产降级、BPMN 排他网关与动态审批人、自动部署目录、唯一键兜底并发重复提交、待办/审批/历史查询、全局异常映射 4xx、权限边界与前端调用链可视化。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-flowable/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 11 分钟</span> <span>· 3645 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/flowable/">#Flowable</a><a class="tag" href="/tags/228526dc/">#工作流</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li class="current">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹（本文）</li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第二十部分，在 JDK 17 + Spring Boot 3.5.4 + Flowable 7.2.0 + MySQL 8 环境中跑通一条请假审批主线：建库、写 BPMN、配自动部署、发起流程、查待办、审批通过/驳回、查历史轨迹，并修复并发重复提交、发起人丢失、参数错误返 500 三个问题。代码为通用示例，数据库账号密码按实际环境调整并做好脱敏。</p>
+<h2 id="一版本基线">一、版本基线</h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>本文版本</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JDK</td>
+<td>17</td>
+<td>运行环境</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>3.5.4</td>
+<td>应用框架</td>
+</tr>
+<tr>
+<td>Flowable</td>
+<td>7.2.0</td>
+<td>BPMN 流程引擎 + Spring Boot Starter</td>
+</tr>
+<tr>
+<td>MySQL</td>
+<td>8.0.45</td>
+<td>持久化业务表与 <code>ACT_*</code> 引擎表</td>
+</tr>
+<tr>
+<td>Maven</td>
+<td>3.9.3</td>
+<td>构建</td>
+</tr>
+</tbody>
+</table>
+<p>这个组合不是随手选的，两条关键事实：</p>
+<ul>
+<li><strong>Flowable 7.2.0</strong>（2025-08-21）Release Notes 明确 <code>Upgrade to Spring Boot 3.5.4</code>；</li>
+<li><strong>Flowable 8.0.0</strong> Breaking Changes 写明：<code>Flowable 8 is now based on Spring Framework 7 and Spring Boot 4. There is no support for Spring Boot 3 anymore.</code></li>
+</ul>
+<p>也就是说，Spring Boot 3 项目应该用 7.2.0，把 8.x 拽进来会直接踩到 Spring 7 / Jackson 3 的不兼容。7.2.0 的元数据基线就是 3.5.4，不擅自升到其它 3.5.x 补丁版本——要升必须重新跑完整回归。</p>
+<h3 id="11-依赖树两个注意点">1.1 依赖树两个注意点</h3>
+<ol>
+<li>Boot 3.5.4 的 BOM 把 MySQL 驱动管到 <strong>Connector/J 9.3.0</strong>，不是 8.x。实测连 MySQL 8.0.45 服务端完全正常，不需要手动降版本，也不要在 pom 里自己写死版本。</li>
+<li><strong>只引 process starter</strong>：常规 BPMN 审批只需要 <code>flowable-spring-boot-starter-process</code>，它会传递引入 <code>flowable-engine</code> 和所需自动配置。不要一上来就引聚合的 <code>flowable-spring-boot-starter</code>，那会把 CMMN、DMN、Event Registry 等用不到的引擎一起拖进来。</li>
+</ol>
+<blockquote>
+<p>7.2.0 的 process starter 自带 IDM / Event Registry 配置器，启动日志会出现 <code>IdmEngineConfigurator</code>、<code>SpringEventRegistryConfigurator</code> 并额外建一批 <code>flw_*</code> / <code>act_id_*</code> 表，不影响 BPMN 功能，不用手动排除。</p>
+</blockquote>
+<h2 id="二五个核心概念与六大服务">二、五个核心概念与六大服务</h2>
+<p>工作流教程最容易劝退人的地方，是几个名词长得太像。先钉死：</p>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>含义</th>
+<th>本文例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Process Definition</td>
+<td>流程定义，可反复启动的模板</td>
+<td><code>leaveApproval:1:xxx</code></td>
+</tr>
+<tr>
+<td>Deployment</td>
+<td>一次部署记录，保存资源与版本</td>
+<td>启动时自动部署的 BPMN 文件</td>
+</tr>
+<tr>
+<td>Process Instance</td>
+<td>按定义启动的一次具体运行</td>
+<td>张三的一次请假申请</td>
+</tr>
+<tr>
+<td>Task</td>
+<td>需要人工办理的任务实例</td>
+<td>部门经理待审批的那条</td>
+</tr>
+<tr>
+<td>Process Variable</td>
+<td>流程运行期间的数据</td>
+<td><code>approverId</code>、<code>days</code>、<code>approved</code></td>
+</tr>
+</tbody>
+</table>
+<p>一句话串起来：<strong>部署</strong>把 BPMN 变成<strong>流程定义</strong>，按定义<strong>启动</strong>得到<strong>流程实例</strong>，实例走到 User Task 生成<strong>待办任务</strong>，办理时写入<strong>流程变量</strong>决定网关往哪走。</p>
+<p><img src="/blog/spring-boot-flowable/spring-boot-flowable-01.png" alt="流程生命周期概念"></p>
+<p>对应的 Flowable 服务，由 starter 自动装配，构造器注入即可，不需要自己 <code>buildProcessEngine()</code>：</p>
+<table>
+<thead>
+<tr>
+<th>服务</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RepositoryService</code></td>
+<td>部署流程定义、查询定义与部署资源</td>
+</tr>
+<tr>
+<td><code>RuntimeService</code></td>
+<td>启动、查询运行实例，管理运行变量</td>
+</tr>
+<tr>
+<td><code>TaskService</code></td>
+<td>查询、认领、完成任务</td>
+</tr>
+<tr>
+<td><code>HistoryService</code></td>
+<td>查询历史实例、任务轨迹、历史变量</td>
+</tr>
+<tr>
+<td><code>IdentityService</code></td>
+<td>设置认证用户（决定历史里的发起人）</td>
+</tr>
+<tr>
+<td><code>ManagementService</code></td>
+<td>作业、异步执行器、表管理等</td>
+</tr>
+</tbody>
+</table>
+<h2 id="三流程设计一条请假审批主线">三、流程设计：一条请假审批主线</h2>
+<p>示例流程固定四步：</p>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>节点</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>开始事件</td>
+<td>员工提交申请，传入申请人、审批人、天数、事由</td>
+</tr>
+<tr>
+<td>2</td>
+<td>部门经理审批</td>
+<td>引擎创建分配给 <code>approverId</code> 的用户任务</td>
+</tr>
+<tr>
+<td>3</td>
+<td>排他网关</td>
+<td>按 <code>approved</code> 布尔变量选分支</td>
+</tr>
+<tr>
+<td>4A / 4B</td>
+<td>通过 / 驳回</td>
+<td>各走一个结束事件，流程结束</td>
+</tr>
+</tbody>
+</table>
+<p>架构上是「业务系统调用嵌入式引擎」：Spring MVC 收请求 → 业务 Service 校验并调 Flowable API → MySQL 同时存业务表与 <code>ACT_*</code> 表。</p>
+<p><img src="/blog/spring-boot-flowable/spring-boot-flowable-02.png" alt="嵌入式引擎架构"></p>
+<h3 id="31-业务数据与流程数据必须分表">3.1 业务数据与流程数据必须分表</h3>
+<p>这是很多新手项目后期最难改的决定：</p>
+<ul>
+<li><code>leave_request</code> 业务表存请假单详情、申请人、天数、业务状态；</li>
+<li><code>ACT_*</code> 引擎表由 Flowable 全权管理，<strong>不要手工改、不要加字段、不要直接删运行记录</strong>；</li>
+<li>两者通过 <code>businessKey</code>（业务单号）和 <code>processInstanceId</code> 关联。</li>
+</ul>
+<p>业务单号直接作为 <code>businessKey</code> 传给引擎，后面查状态、查历史、做幂等都靠它。</p>
+<h2 id="四创建工程与依赖配置">四、创建工程与依赖配置</h2>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-web&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    &#x3C;!-- 只引 process starter，不引聚合 starter --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.flowable&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>flowable-spring-boot-starter-process&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-jdbc&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>com.mysql&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>mysql-connector-j&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<p><code>spring-boot-starter-jdbc</code> 用于落一张业务表做幂等，<code>JdbcTemplate</code> 最轻；如果只做纯流程演示，可以去掉它和 <code>schema.sql</code>。启动类用标准写法，无特殊注解。</p>
+<h2 id="五准备-mysql-数据库">五、准备 MySQL 数据库</h2>
+<p>先手工建库（这一步需要 DBA 权限，应用启动时做不了）。生产环境建议同时建一个最小权限账号，别让应用用 root 跑。</p>
+<p>两类表由应用自动创建：</p>
+<table>
+<thead>
+<tr>
+<th>表</th>
+<th>谁创建</th>
+<th>怎么触发</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>leave_request</code> 业务表</td>
+<td>应用</td>
+<td><code>spring.sql.init.mode=always</code> 执行 <code>resources/schema.sql</code></td>
+</tr>
+<tr>
+<td><code>ACT_*</code> 引擎表</td>
+<td>Flowable</td>
+<td><code>flowable.database-schema-update=true</code></td>
+</tr>
+</tbody>
+</table>
+<p>实测首次启动后库里出现 47 张表，包括 <code>ACT_RE_PROCDEF</code>、<code>ACT_RU_TASK</code>、<code>ACT_RU_EXECUTION</code>、<code>ACT_HI_PROCINST</code>、<code>ACT_HI_TASKINST</code>、<code>ACT_HI_VARINST</code>，以及 IDM / Event Registry 相关的 <code>act_id_*</code>、<code>flw_*</code>。</p>
+<blockquote>
+<p><code>database-schema-update=true</code> 只适合本地开发和首次验证。生产必须改成 <code>false</code>，按对应版本的升级脚本做受控变更，应用账号只保留 DML 权限。</p>
+</blockquote>
+<h2 id="六编写-applicationyml">六、编写 application.yml</h2>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  datasource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">jdbc:mysql://127.0.0.1:3306/flowable_demo?useUnicode=true&#x26;characterEncoding=utf8&#x26;serverTimezone=Asia/Shanghai</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${DB_USER:root}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${DB_PASSWORD:change-me}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  sql</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    init</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      mode</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">always</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">flowable</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  database-schema-update</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  history-level</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">audit</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  async-executor-activate</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  process-definition-location-prefix</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">classpath*:/processes/</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  process-definition-location-suffixes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">bpmn20.xml</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">logging</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  charset</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    console</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">UTF-8</span></span></code></pre>
+<p>逐项说明：</p>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>database-schema-update: true</code></td>
+<td>允许引擎自动建/升级 <code>ACT_*</code> 表</td>
+</tr>
+<tr>
+<td><code>history-level: audit</code></td>
+<td>保存流程实例、活动、任务、变量历史</td>
+</tr>
+<tr>
+<td><code>async-executor-activate: false</code></td>
+<td>示例无定时器和异步节点，先关掉；用了异步 Service Task 再打开</td>
+</tr>
+<tr>
+<td><code>process-definition-location-prefix</code></td>
+<td>自动部署扫描目录 <code>classpath*:/processes/</code></td>
+</tr>
+<tr>
+<td><code>process-definition-location-suffixes</code></td>
+<td>扫描后缀，逗号分隔</td>
+</tr>
+<tr>
+<td><code>spring.sql.init.mode: always</code></td>
+<td>每次启动执行业务表 DDL（<code>CREATE TABLE IF NOT EXISTS</code>，可重复）</td>
+</tr>
+<tr>
+<td><code>logging.charset.console: UTF-8</code></td>
+<td>Windows 控制台中文日志不乱码，CMD 下另需 <code>chcp 65001</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="61-坑yaml-单引号必须闭合">6.1 坑：YAML 单引号必须闭合</h3>
+<p>配置行开头有单引号、结尾没有时，YAML 解析到行尾发现引号标量没闭合，会直接报扫描错误，或被解析成非预期值，表现是「BPMN 扫不到 / 启动失败」。这类错误发生在配置绑定阶段，日志里不会有「文件不存在」之类的友好提示，排查时优先看 application.yml 本身。</p>
+<h2 id="七设计-bpmn-20-流程文件">七、设计 BPMN 2.0 流程文件</h2>
+<p>放在 <code>src/main/resources/processes/leave-approval.bpmn20.xml</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;?</span><span style="color:#22863A;--shiki-dark:#85E89D">xml</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"1.0"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> encoding</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"UTF-8"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">?></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">definitions</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> xmlns</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"http://www.omg.org/spec/BPMN/20100524/MODEL"</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">             xmlns:flowable</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"http://flowable.org/flowable"</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">             targetNamespace</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"http://flowable.org/demo"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">process</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"leaveApproval"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> isExecutable</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"true"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">startEvent</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"start"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> /></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">userTask</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"managerTask"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> flowable:assignee</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"${approverId}"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"部门经理审批"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> /></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">exclusiveGateway</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"approvalGateway"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> /></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">sequenceFlow</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"toApprove"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sourceRef</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"approvalGateway"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> targetRef</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"approvedEnd"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">conditionExpression</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> xsi:type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"tFormalExpression"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#9ECBFF">        &#x3C;![CDATA[${approved == true}]]></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">conditionExpression</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">sequenceFlow</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">sequenceFlow</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"toReject"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sourceRef</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"approvalGateway"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> targetRef</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"rejectedEnd"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">conditionExpression</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> xsi:type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"tFormalExpression"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#9ECBFF">        &#x3C;![CDATA[${approved == false}]]></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">conditionExpression</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">sequenceFlow</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">endEvent</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"approvedEnd"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> /></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">endEvent</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"rejectedEnd"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> /></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">sequenceFlow</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sourceRef</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"start"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> targetRef</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"managerTask"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> /></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">sequenceFlow</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sourceRef</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"managerTask"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> targetRef</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"approvalGateway"</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> /></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">process</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">definitions</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<p><img src="/blog/spring-boot-flowable/spring-boot-flowable-03.png" alt="请假审批 BPMN 主线"></p>
+<p>关键字段：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>process id="leaveApproval"</code></td>
+<td>流程定义 Key，启动时 <code>startProcessInstanceByKey("leaveApproval", ...)</code> 用的就是它，写错会报 <code>No process definition</code></td>
+</tr>
+<tr>
+<td><code>isExecutable="true"</code></td>
+<td>标识可执行流程，漏了部署后无法启动</td>
+</tr>
+<tr>
+<td><code>flowable:assignee="${approverId}"</code></td>
+<td>从流程变量动态取审批人，所以启动流程时<strong>必须</strong>传 <code>approverId</code></td>
+</tr>
+<tr>
+<td><code>exclusiveGateway</code></td>
+<td>排他网关，按出线条件选且只选一条</td>
+</tr>
+<tr>
+<td><code>${approved == true}</code> / <code>${approved == false}</code></td>
+<td>两条出线的条件，变量必须是 Boolean</td>
+</tr>
+</tbody>
+</table>
+<p>网关最容易踩两个坑：一是 <code>approved</code> 变量没传或类型不对，引擎报「无出线可走」，办理任务时要显式写入布尔变量；二是两条出线都写了条件、没有默认流，变量齐全就没问题，以后加分支记得给一条留默认出线兜底。条件表达式用 <code>CDATA</code> 包一层是必要的，避免 XML 把 <code>&#x3C;</code>、<code>&#x26;&#x26;</code> 之类字符当标签解析。</p>
+<h2 id="八启动验证自动建表与自动部署">八、启动验证：自动建表与自动部署</h2>
+<p>启动后日志三处关键信息，重点是 <code>SpringBootAutoDeployment</code> 扫到 jar 包里的 BPMN 并完成部署。注意路径是 <strong>jar 内部</strong>的 <code>BOOT-INF/classes/processes/</code>，所以文件必须放在 <code>src/main/resources/processes/</code>，放错目录不会被扫到。</p>
+<p>同一个 Key 多次部署会累加 version，启动实例默认用最新版本；已经跑起来的实例仍绑定它启动时的那一版。</p>
+<h2 id="九业务表与幂等解决并发重复提交">九、业务表与幂等：解决并发重复提交</h2>
+<p>「先查有没有运行中的实例，再启动」挡不住并发——两个请求同时通过预检查，就会生成两个流程实例。正确做法是数据库唯一约束兜底。业务表 DDL：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> IF</span><span style="color:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="color:#D73A49;--shiki-dark:#F97583"> EXISTS</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> leave_request (</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    id </span><span style="color:#D73A49;--shiki-dark:#F97583">BIGINT</span><span style="color:#D73A49;--shiki-dark:#F97583"> PRIMARY KEY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> AUTO_INCREMENT,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    business_key </span><span style="color:#D73A49;--shiki-dark:#F97583">VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">64</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">NOT NULL</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    applicant_id </span><span style="color:#D73A49;--shiki-dark:#F97583">VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">64</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">NOT NULL</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    approver_id </span><span style="color:#D73A49;--shiki-dark:#F97583">VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">64</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">NOT NULL</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    days</span><span style="color:#D73A49;--shiki-dark:#F97583"> INT</span><span style="color:#D73A49;--shiki-dark:#F97583"> NOT NULL</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    reason </span><span style="color:#D73A49;--shiki-dark:#F97583">VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">255</span><span style="color:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    status</span><span style="color:#D73A49;--shiki-dark:#F97583"> VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">32</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">NOT NULL</span><span style="color:#D73A49;--shiki-dark:#F97583"> DEFAULT</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'RUNNING'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    process_instance_id </span><span style="color:#D73A49;--shiki-dark:#F97583">VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">64</span><span style="color:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    created_at </span><span style="color:#D73A49;--shiki-dark:#F97583">TIMESTAMP</span><span style="color:#D73A49;--shiki-dark:#F97583"> DEFAULT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> CURRENT_TIMESTAMP,</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    CONSTRAINT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> uk_business_key </span><span style="color:#D73A49;--shiki-dark:#F97583">UNIQUE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (business_key)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<p>发起流程时三步放在同一个事务里：先写业务表、再设认证用户、最后启动流程实例。</p>
+<p>三个细节：</p>
+<ol>
+<li><strong>业务表写入与引擎调用共用同一个 <code>DataSource</code> 和事务管理器</strong>，任何一步失败一起回滚，不会出现「有业务单但没流程」或反过来。</li>
+<li><code>identityService.setAuthenticatedUserId(applicantId)</code> 决定 <code>ACT_HI_PROCINST.START_USER_ID_</code> 有没有值。不设置的话，历史查询里 <code>startUserId</code> 是 null。它是 ThreadLocal，用完必须在 <code>finally</code> 里清空，否则线程复用会串号。</li>
+<li><code>DuplicateKeyException</code> 交给全局异常处理映射成 HTTP 409，前端能明确知道是重复提交，而不是看到一个 500。</li>
+</ol>
+<h2 id="十service-层待办审批与历史查询">十、Service 层：待办、审批与历史查询</h2>
+<h3 id="101-请求-dto-用-record--校验注解">10.1 请求 DTO 用 record + 校验注解</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> record</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> StartLeaveRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">NotBlank</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String businessKey,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">NotBlank</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String applicantId,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">NotBlank</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String approverId,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">Min</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) Integer days,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String reason) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="102-查询待办">10.2 查询待办</h3>
+<p>BPMN 用 <code>assignee</code> 直接分配，用 <code>taskAssignee</code> 查：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">List</span><span style="color:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="color:#24292E;--shiki-dark:#E1E4E8">Task</span><span style="color:#D73A49;--shiki-dark:#F97583">></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> todoTasks</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String userId) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> taskService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">createTaskQuery</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">taskAssignee</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(userId)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">orderByTaskCreateTime</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">desc</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">list</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>如果改成 <code>flowable:candidateGroups="MANAGER"</code> 候选组，查询要换成 <code>taskCandidateGroup("MANAGER")</code>，办理前还要先 <code>taskService.claim(taskId, userId)</code>，两者不能混用。</p>
+<h3 id="103-办理审批">10.3 办理审批</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> complete</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String taskId, String operatorId, </span><span style="color:#D73A49;--shiki-dark:#F97583">boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> approved, String comment) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    Task task </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> taskService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">createTaskQuery</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">taskId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(taskId).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">singleResult</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (task </span><span style="color:#D73A49;--shiki-dark:#F97583">==</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> null</span><span style="color:#D73A49;--shiki-dark:#F97583"> ||</span><span style="color:#D73A49;--shiki-dark:#F97583"> !</span><span style="color:#24292E;--shiki-dark:#E1E4E8">operatorId.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">equals</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(task.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getAssignee</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        throw</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> IllegalArgumentException</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"任务不存在、已办理或当前用户无权办理"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> vars </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> HashMap&#x3C;>();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    vars.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">put</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"approved"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, approved);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    taskService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">complete</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(taskId, vars);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>taskService.complete()</code> 一执行，引擎立刻计算排他网关条件，走对应结束事件，运行实例从 <code>ACT_RU_*</code> 移除，历史留在 <code>ACT_HI_*</code>。</p>
+<blockquote>
+<p><strong>权限提醒</strong>：<code>operatorId</code> 由前端传入只适合教程演示。生产项目必须从 Principal / JWT 里取当前用户 ID，否则攻击者可以伪造审批人。用 <code>taskAssignee</code> 做基本限定不等于完整的认证授权。</p>
+</blockquote>
+<h3 id="104-运行状态与历史查询">10.4 运行状态与历史查询</h3>
+<p><code>running != null</code> 表示流程还在跑；一旦到达结束事件，运行实例被删除，只能从 <code>HistoryService</code> 查。历史任务轨迹和历史变量同理。历史级别会限制可查范围：<code>audit</code> 足够覆盖常规审批轨迹；要更完整的活动级记录再评估 <code>full</code>，但要注意数据量。</p>
+<h2 id="十一统一响应与异常处理把-500-变成-4xx">十一、统一响应与异常处理：把 500 变成 4xx</h2>
+<p>Controller 直接返回 <code>Map</code>/<code>List</code>，一旦 Service 抛 <code>IllegalArgumentException</code>，Spring 默认给一个 HTTP 500 + 一堆堆栈，调用方分不清「参数填错了」和「服务挂了」。补统一响应体和全局异常处理器：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RestControllerAdvice</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> GlobalExceptionHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">ExceptionHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MethodArgumentNotValidException.class)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity&#x3C;Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">validation</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MethodArgumentNotValidException </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String msg </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> e.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getBindingResult</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getFieldError</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">!=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> null</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">                ?</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> e.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getBindingResult</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getFieldError</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getDefaultMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">:</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "参数校验失败"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">badRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">body</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Map.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"success"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"message"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, msg));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">ExceptionHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(IllegalArgumentException.class)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity&#x3C;Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">badRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(IllegalArgumentException </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">badRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">body</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Map.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"success"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"message"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, e.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">ExceptionHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(DuplicateKeyException.class)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity&#x3C;Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">conflict</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(DuplicateKeyException </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">status</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(HttpStatus.CONFLICT)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">body</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Map.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"success"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"message"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"该业务单号已存在，请勿重复提交"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">ExceptionHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(FlowableObjectNotFoundException.class)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity&#x3C;Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">notFound</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(FlowableObjectNotFoundException </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">status</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(HttpStatus.NOT_FOUND)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">body</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Map.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"success"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"message"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"流程对象不存在"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">ExceptionHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(FlowableException.class)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity&#x3C;Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">flowable</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(FlowableException </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">badRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">body</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Map.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"success"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"message"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, e.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>映射结果：</p>
+<table>
+<thead>
+<tr>
+<th>异常</th>
+<th>HTTP</th>
+<th>典型场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MethodArgumentNotValidException</code></td>
+<td>400</td>
+<td><code>days=0</code>、缺 <code>businessKey</code></td>
+</tr>
+<tr>
+<td><code>IllegalArgumentException</code></td>
+<td>400</td>
+<td>越权办理、查不存在的实例、空 userId</td>
+</tr>
+<tr>
+<td><code>DuplicateKeyException</code></td>
+<td>409</td>
+<td>重复提交同一业务单号</td>
+</tr>
+<tr>
+<td><code>FlowableObjectNotFoundException</code></td>
+<td>404</td>
+<td>流程对象不存在</td>
+</tr>
+<tr>
+<td><code>FlowableException</code></td>
+<td>400</td>
+<td>流程定义未部署、网关表达式错误</td>
+</tr>
+<tr>
+<td>其它</td>
+<td>500</td>
+<td>真正的服务端错误，记日志</td>
+</tr>
+</tbody>
+</table>
+<h2 id="十二controller-与接口清单">十二、Controller 与接口清单</h2>
+<p>两个 Controller 分工：<code>LeaveController</code> 管业务动作，<code>ProcessQueryController</code> 管查询。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路径</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/process/definitions</code></td>
+<td>查询最新流程定义</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/leave/start</code></td>
+<td>发起请假申请</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/leave/tasks?userId=</code></td>
+<td>查询指定用户待办</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/leave/tasks/{taskId}/complete</code></td>
+<td>办理审批</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/process/instances/{id}/status</code></td>
+<td>运行状态、开始/结束时间、发起人</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/process/instances/{id}/history/tasks</code></td>
+<td>历史任务轨迹</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/process/instances/{id}/history/variables</code></td>
+<td>历史流程变量</td>
+</tr>
+</tbody>
+</table>
+<h2 id="十三端到端实测">十三、端到端实测</h2>
+<p>按「先部署确认 → 发起 → 查待办 → 查状态 → 审批 → 查历史」的顺序跑，再补驳回分支和异常场景。</p>
+<h3 id="131-通过分支">13.1 通过分支</h3>
+<p>发起申请后待办任务自动生成；运行中状态 <code>startUserId</code> 有值，说明 <code>setAuthenticatedUserId</code> 生效；审批通过后再查，实例已从运行时移除；历史任务轨迹与变量可查，中文审批意见在入库、查询、返回三段链路都正常。</p>
+<h3 id="132-驳回分支">13.2 驳回分支</h3>
+<p>同一套流程换 <code>approved=false</code>，实测 <code>running=false</code>、<code>approved=false</code> 已持久化，业务单状态变成 <code>REJECTED</code>。这证明排他网关两条出线都被真实走到，不是只测了顺的那条。</p>
+<h3 id="133-异常与边界">13.3 异常与边界</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>实测结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>重复提交同一业务单号</td>
+<td>HTTP 409，<code>该业务单号已存在，请勿重复提交</code></td>
+</tr>
+<tr>
+<td><code>days=0</code></td>
+<td>HTTP 400，<code>请假天数至少为 1</code></td>
+</tr>
+<tr>
+<td>缺 <code>businessKey</code></td>
+<td>HTTP 400，<code>businessKey 不能为空</code></td>
+</tr>
+<tr>
+<td>越权办理他人任务</td>
+<td>HTTP 400，<code>任务不存在、已办理或当前用户无权办理</code></td>
+</tr>
+<tr>
+<td>空 <code>userId</code></td>
+<td>HTTP 400，<code>userId 不能为空</code></td>
+</tr>
+<tr>
+<td>查不存在的流程实例</td>
+<td>HTTP 400（非 500），<code>流程实例不存在</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="十四踩坑汇总与生产化建议">十四、踩坑汇总与生产化建议</h2>
+<h3 id="141-踩坑速查">14.1 踩坑速查</h3>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>原因</th>
+<th>处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>启动失败或 BPMN 扫不到</td>
+<td>YAML 后缀配置单引号未闭合</td>
+<td>补上结尾引号</td>
+</tr>
+<tr>
+<td><code>No process definition ... for key</code></td>
+<td>BPMN <code>process id</code> 与启动参数不一致，或文件不在 <code>resources/processes/</code></td>
+<td>核对 id、目录、部署日志</td>
+</tr>
+<tr>
+<td>审批后网关报无出线</td>
+<td><code>approved</code> 变量缺失/类型不对</td>
+<td>完成任务时显式写 Boolean</td>
+</tr>
+<tr>
+<td>历史 <code>startUserId</code> 为 null</td>
+<td>未设置认证用户</td>
+<td><code>setAuthenticatedUserId</code>，用完清空</td>
+</tr>
+<tr>
+<td>参数/权限错误返回 500</td>
+<td>没有全局异常处理</td>
+<td><code>@RestControllerAdvice</code> 映射 4xx</td>
+</tr>
+<tr>
+<td>重复提交生成多实例</td>
+<td>只做「先查再启动」预检查</td>
+<td>业务表唯一键 + 事务</td>
+</tr>
+<tr>
+<td>Windows 控制台中文乱码</td>
+<td>Logback 跟随系统 GBK</td>
+<td><code>logging.charset.console: UTF-8</code></td>
+</tr>
+<tr>
+<td><code>ACT_*</code> 表结构版本异常</td>
+<td>引擎版本与库表版本不一致</td>
+<td>核对版本与升级脚本，生产走受控升级</td>
+</tr>
+<tr>
+<td>静态资源 404 被刷成 ERROR 堆栈</td>
+<td>兜底 <code>@ExceptionHandler(Exception.class)</code> 把静态资源 404 当服务端故障</td>
+<td>显式处理 <code>NoResourceFoundException</code> 返回 404</td>
+</tr>
+</tbody>
+</table>
+<h3 id="142-生产化清单">14.2 生产化清单</h3>
+<ol>
+<li>关闭 <code>database-schema-update</code>，应用账号收回 DDL 权限；</li>
+<li><code>userId</code> / <code>operatorId</code> 一律从登录态取，待办、认领、办理、查历史都做数据权限校验；</li>
+<li>流程发布改成受控操作，记录 BPMN 文件、版本、发布人、审批与回滚预案；流程 Key 保持稳定，已运行实例继续绑定旧版本；</li>
+<li>用了定时器或异步 Service Task 才启用 <code>async-executor-activate</code>，Delegate 必须幂等；外部通知走 Outbox / 异步作业，不要指望数据库事务能回滚外部系统；</li>
+<li>待办查询分页，历史级别按审计与数据量评估；流程变量不放超大 JSON、附件二进制、口令和令牌；</li>
+<li>多实例部署共享同一数据库，配置异步作业锁与时钟同步，监控 <code>ACT_RU_*</code>、<code>ACT_HI_*</code>、作业积压和连接池。</li>
+</ol>
+<h2 id="十五前端可视化页面把请求流程画出来">十五、前端可视化页面：把请求流程画出来</h2>
+<p>后端闭环后，只看接口文档或 curl 命令，很难建立「一次审批到底发了几个请求、上一步的哪个返回值喂给了下一步」的直觉。工程可补一个零依赖的静态页面，放在 <code>src/main/resources/static/</code>，Spring Boot 默认托管 <code>classpath:/static/</code>，<code>java -jar</code> 启动后同源访问，不需要 Node、不需要打包，也不需要配 CORS。</p>
+<p><img src="/blog/spring-boot-flowable/spring-boot-flowable-04.png" alt="七步调用链可视化"></p>
+<p>页面所有请求走同一个 <code>execute</code> 函数，关键在 <code>step.after</code> 负责把上一步返回值写进上下文：发起申请时存 <code>processInstanceId</code>，查待办时按它匹配出 <code>taskId</code>，办理审批和查历史就从上下文取——7 步顺序不是写死的脚本，而是由依赖关系串起来的。</p>
+<table>
+<thead>
+<tr>
+<th>页面操作</th>
+<th>请求</th>
+<th>依赖</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>① 查看流程定义</td>
+<td><code>GET /api/process/definitions</code></td>
+<td>无</td>
+</tr>
+<tr>
+<td>② 发起请假申请</td>
+<td><code>POST /api/leave/start</code></td>
+<td>无</td>
+</tr>
+<tr>
+<td>③ 查询审批人待办</td>
+<td><code>GET /api/leave/tasks?userId=</code></td>
+<td>② 的流程实例</td>
+</tr>
+<tr>
+<td>④ 办理审批任务</td>
+<td><code>POST /api/leave/tasks/{taskId}/complete</code></td>
+<td>③ 的 <code>taskId</code></td>
+</tr>
+<tr>
+<td>⑤ 查询运行状态</td>
+<td><code>GET /api/process/instances/{id}/status</code></td>
+<td>② 的 <code>processInstanceId</code></td>
+</tr>
+<tr>
+<td>⑥ 查询审批轨迹</td>
+<td><code>GET /api/process/instances/{id}/history/tasks</code></td>
+<td>同上</td>
+</tr>
+<tr>
+<td>⑦ 查询历史变量</td>
+<td><code>GET /api/process/instances/{id}/history/variables</code></td>
+<td>同上</td>
+</tr>
+</tbody>
+</table>
+<p>页面价值不在「好看」，而在把不可见的调用链变成可见证据：哪个参数来自上一步、哪一步返回 4xx、耗时花在哪、错误信息长什么样，都能直接指着屏幕讲，对联调和排查「为什么流程没走完」都好用。</p>
+<h2 id="十六小结">十六、小结</h2>
+<p>把 Flowable 接进 Spring Boot 3，真正花时间的不是写 <code>startProcessInstanceByKey</code> 那几行，而是四件事：<strong>版本组合选对、BPMN 放对位置并确认部署成功、业务表与引擎表用事务和唯一键对齐、异常与权限边界收干净</strong>。三个最容易复盘的点：</p>
+<ol>
+<li><strong>Boot 3 配 Flowable 7.2.0</strong>，8.x 已转向 Spring 7 / Boot 4，别混进依赖树；</li>
+<li><strong>业务表与 <code>ACT_*</code> 分表</strong>，靠 <code>businessKey</code> 关联，引擎表不手工改；</li>
+<li><strong>并发幂等靠唯一约束 + 事务</strong>，「先查再启动」挡不住并发。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-flowable/">https://zhanzhenguan.github.io/blog/spring-boot-flowable/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-data/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</div> </a> <a class="next" href="/blog/spring-boot-jwt/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹","description":"整理 Spring Boot 3 接入 Flowable 工作流的要点：版本基线（Boot 3 配 7.2.0，8.x 基于 Spring 7/Boot 4）、流程定义/部署/实例/任务/变量五概念与六大服务、业务表与 ACT_* 引擎表分表、process starter 选型、MySQL 自动建表与生产降级、BPMN 排他网关与动态审批人、自动部署目录、唯一键兜底并发重复提交、待办/审批/历史查询、全局异常映射 4xx、权限边界与前端调用链可视化。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-flowable/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

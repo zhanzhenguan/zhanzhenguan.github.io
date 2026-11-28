@@ -1,0 +1,216 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 整合 RabbitMQ 的要点：消息流转模型、amqp 依赖、连接与监听配置、Topic 交换机/队列/绑定声明、RabbitTemplate 发送、@RabbitListener 监听与手动 ACK，以及消息确认、持久化、发布确认、幂等消费与排查建议。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性"><meta property="og:description" content="整理 Spring Boot 整合 RabbitMQ 的要点：消息流转模型、amqp 依赖、连接与监听配置、Topic 交换机/队列/绑定声明、RabbitTemplate 发送、@RabbitListener 监听与手动 ACK，以及消息确认、持久化、发布确认、幂等消费与排查建议。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-rabbitmq/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 6 分钟</span> <span>· 1959 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/rabbitmq/">#RabbitMQ</a><a class="tag" href="/tags/8bedb7aa/">#消息队列</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li class="current">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性（本文）</li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第九部分，整合 RabbitMQ：按生产者工程与消费者工程拆分，梳理消息流转、Topic 路由、手动确认与可靠性保障。代码为通用示例，连接信息用占位符。</p>
+<h2 id="一基本概念与消息流转">一、基本概念与消息流转</h2>
+<p>可以把 RabbitMQ 理解为应用程序之间的「消息中转站」：生产者把待处理任务发到 RabbitMQ，消费者再从队列取出执行，两者不必在同一应用、也不必同时在线。</p>
+<p>消息基本流转顺序：<strong>生产者（Producer）→ 交换机（Exchange）→ 队列（Queue）→ 消费者（Consumer）</strong>。</p>
+<ul>
+<li><strong>生产者</strong>：产生消息，例如订单创建后发送一条通知消息；</li>
+<li><strong>交换机</strong>：接收消息并按规则路由，不保存消息；根据交换机类型、绑定关系和路由键决定消息进入哪个队列；</li>
+<li><strong>队列</strong>：暂存消息，消费较慢时消息先在队列等待；</li>
+<li><strong>消费者</strong>：监听队列并执行业务逻辑，如发短信、邮件或更新业务数据。</li>
+</ul>
+<p>本例拆成生产者、消费者两个 Spring Boot 工程，使用 Topic 交换机，按不同 RoutingKey 把邮件、短信消息分别投递到对应队列。</p>
+<p><img src="/blog/spring-boot-rabbitmq/spring-boot-rabbitmq-01.png" alt="RabbitMQ 消息流转拓扑"></p>
+<h2 id="二依赖">二、依赖</h2>
+<p>两个工程都引入 <code>spring-boot-starter-amqp</code>，它是 Spring Boot 集成 AMQP 消息中间件的启动依赖，引入后即可使用 <code>RabbitTemplate</code>、<code>@RabbitListener</code> 等组件：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-amqp&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<p><code>RabbitTemplate</code> 主要用于发送消息；<code>@RabbitListener</code> 主要用于监听队列接收消息。两个工程都需要该依赖，因为都要与 RabbitMQ 建立连接。</p>
+<h2 id="三连接配置">三、连接配置</h2>
+<h3 id="31-连接参数">3.1 连接参数</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  rabbitmq</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    host</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">127.0.0.1</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    port</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">5672</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">demo</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${RABBITMQ_PASSWORD:change-me}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    virtual-host</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">/</span></span></code></pre>
+<ul>
+<li><code>server.port</code> 是应用自身 Web 端口（生产者 8081、消费者 8082），与 RabbitMQ 的 AMQP 端口不同；</li>
+<li>AMQP 通信端口默认 <strong>5672</strong>，管理控制台端口通常是 <strong>15672</strong>，不要混淆；</li>
+<li><code>virtual-host</code> 用于隔离不同应用的交换机、队列和权限；生产者和消费者必须连接到同一个虚拟主机才能访问相同消息资源；</li>
+<li>本机学习可用 <code>guest/guest</code>，远程或生产环境应创建专用用户并分配最小必要权限。</li>
+</ul>
+<h3 id="32-消费者监听参数">3.2 消费者监听参数</h3>
+<p>消费者工程按需配置监听容器：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  rabbitmq</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    listener</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      simple</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        acknowledge-mode</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">manual</span><span style="color:#6A737D;--shiki-dark:#6A737D">      # 手动确认</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        concurrency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">1</span><span style="color:#6A737D;--shiki-dark:#6A737D">                # 启动消费者数</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        max-concurrency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">10</span><span style="color:#6A737D;--shiki-dark:#6A737D">           # 最大消费者数</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        prefetch</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">100</span><span style="color:#6A737D;--shiki-dark:#6A737D">                 # 未确认前预取消息数</span></span></code></pre>
+<ul>
+<li><code>acknowledge-mode: manual</code>：手动确认，业务成功后主动 ACK；只设 manual 却不调用确认方法，消息会一直处于 Unacked；</li>
+<li><code>concurrency</code> / <code>max-concurrency</code>：初始与最大消费者数量，并发越高消费能力越强，但也会加大下游数据库、外部接口压力；</li>
+<li><code>prefetch</code>：确认前最多预取的未确认消息数，过大占用内存并可能导致消息分配不均。</li>
+</ul>
+<h2 id="四配置类交换机队列与绑定">四、配置类：交换机、队列与绑定</h2>
+<p>配置类把交换机、队列及绑定关系声明为 Spring Bean，应用启动时 Spring AMQP 同步到 RabbitMQ，资源不存在则创建。本例使用 Topic 交换机：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RabbitmqConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String EXCHANGE </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "exchange_topics_inform"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String QUEUE_EMAIL </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "queue_inform_email"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String QUEUE_SMS </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "queue_inform_sms"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> TopicExchange </span><span style="color:#6F42C1;--shiki-dark:#B392F0">topicExchange</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ExchangeBuilder.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">topicExchange</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(EXCHANGE).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">durable</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span><span style="color:#24292E;--shiki-dark:#E1E4E8">).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Queue </span><span style="color:#6F42C1;--shiki-dark:#B392F0">emailQueue</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> QueueBuilder.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">durable</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(QUEUE_EMAIL).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Queue </span><span style="color:#6F42C1;--shiki-dark:#B392F0">smsQueue</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> QueueBuilder.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">durable</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(QUEUE_SMS).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Binding </span><span style="color:#6F42C1;--shiki-dark:#B392F0">emailBinding</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Queue </span><span style="color:#E36209;--shiki-dark:#FFAB70">emailQueue</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, TopicExchange </span><span style="color:#E36209;--shiki-dark:#FFAB70">topicExchange</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> BindingBuilder.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">bind</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(emailQueue).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">to</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(topicExchange).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">with</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"inform.email"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Binding </span><span style="color:#6F42C1;--shiki-dark:#B392F0">smsBinding</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Queue </span><span style="color:#E36209;--shiki-dark:#FFAB70">smsQueue</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, TopicExchange </span><span style="color:#E36209;--shiki-dark:#FFAB70">topicExchange</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> BindingBuilder.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">bind</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(smsQueue).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">to</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(topicExchange).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">with</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"inform.sms"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<ul>
+<li><code>durable(true)</code>：交换机/队列定义持久化，RabbitMQ 重启后保留定义；</li>
+<li>交换机负责路由，队列负责存储等待消费的消息，二者是不同对象；</li>
+<li>Topic 路由键由英文句点分隔的单词组成：<code>*</code> 匹配一个单词，<code>#</code> 匹配零个或多个单词，例如 <code>inform.#.email.#</code> 可匹配 <code>inform.email</code> 与 <code>inform.order.email.notice</code>。</li>
+</ul>
+<p><img src="/blog/spring-boot-rabbitmq/spring-boot-rabbitmq-02.png" alt="Topic 交换机按路由键路由到队列"></p>
+<blockquote>
+<p>注意：生产者与消费者对同名资源声明的类型、持久化等参数必须一致，否则 RabbitMQ 可能返回 <code>PRECONDITION_FAILED</code>。建议把名称集中定义为常量或抽到公共模块。</p>
+</blockquote>
+<h2 id="五生产者rabbittemplate-发送">五、生产者：RabbitTemplate 发送</h2>
+<p>注入 <code>RabbitTemplate</code> 即可发送，<code>convertAndSend</code> 常见参数依次为交换机名称、RoutingKey、消息内容：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Service</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> InformProducer</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RabbitTemplate rabbitTemplate;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> InformProducer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(RabbitTemplate </span><span style="color:#E36209;--shiki-dark:#FFAB70">rabbitTemplate</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        this</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.rabbitTemplate </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> rabbitTemplate;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sendEmail</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">message</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        rabbitTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">convertAndSend</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(RabbitmqConfig.EXCHANGE, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"inform.email"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, message);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sendSms</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">message</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        rabbitTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">convertAndSend</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(RabbitmqConfig.EXCHANGE, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"inform.sms"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, message);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>convertAndSend</code> 只代表把消息交给 RabbitMQ；消息是否成功路由、是否被消费、业务是否处理成功，需要通过发布确认、队列状态和消费者日志进一步验证。</p>
+<h2 id="六消费者监听队列与手动-ack">六、消费者：监听队列与手动 ACK</h2>
+<p>消费者工程同样声明相同的交换机、队列与绑定，保证单独启动时拓扑存在。用 <code>@RabbitListener</code> 监听队列：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Component</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> InformListener</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">RabbitListener</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">queues</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RabbitmqConfig.QUEUE_EMAIL)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> handleEmail</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">msg</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, Message </span><span style="color:#E36209;--shiki-dark:#FFAB70">message</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, Channel </span><span style="color:#E36209;--shiki-dark:#FFAB70">channel</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">throws</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> IOException {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        long</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> tag </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> message.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getMessageProperties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getDeliveryTag</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        try</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">            // 业务处理</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            channel.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">basicAck</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(tag, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        } </span><span style="color:#D73A49;--shiki-dark:#F97583">catch</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (Exception </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">            // 业务失败：拒绝消息；最后一个参数 false 表示不重新入队</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            channel.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">basicNack</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(tag, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">RabbitListener</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">queues</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RabbitmqConfig.QUEUE_SMS)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> handleSms</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">msg</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, Message </span><span style="color:#E36209;--shiki-dark:#FFAB70">message</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, Channel </span><span style="color:#E36209;--shiki-dark:#FFAB70">channel</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">throws</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> IOException {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        long</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> tag </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> message.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getMessageProperties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getDeliveryTag</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">basicAck</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(tag, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<ul>
+<li><code>msg</code>：转换后的消息正文；<code>Message</code>：AMQP 消息对象，可取属性、消息头与 <code>deliveryTag</code>；<code>Channel</code>：底层通信通道，用于手动 ACK/NACK；</li>
+<li><code>basicAck(tag, false)</code>：确认消息；<code>basicNack(tag, false, requeue)</code>：拒绝消息，<code>requeue</code> 为是否重新入队；</li>
+<li><code>requeue=false</code> 且配置了死信交换机/队列时，消息按死信规则转入；否则可能被丢弃。<code>requeue=true</code> 会重新入队，持续失败时可能反复消费，应设计有限次数重试。</li>
+</ul>
+<h2 id="七消息可靠性">七、消息可靠性</h2>
+<h3 id="71-消息确认ack">7.1 消息确认（ACK）</h3>
+<p>ACK 是消费者向 RabbitMQ 发送的完成信号。自动确认由框架处理；手动确认需在业务代码中主动调用。建议<strong>业务处理成功后再 ACK</strong>：先 ACK 再执行业务，中途异常时 RabbitMQ 已认为完成，消息无法自动重投；一直不 ACK 则消息处于 Unacked，连接关闭后可能重新投递。</p>
+<h3 id="72-持久化与发布确认">7.2 持久化与发布确认</h3>
+<p><code>durable(true)</code> 只表示交换机/队列定义持久化，不等于消息一定不丢。提升可靠性还需结合：消息持久化、生产者发布确认、路由失败处理与消费者确认机制。</p>
+<ul>
+<li><strong>Publisher Confirm</strong>：判断 RabbitMQ 是否确认接收生产者消息；</li>
+<li><strong>Return 回调</strong>：处理消息无法路由到任何队列的情况。</li>
+</ul>
+<h3 id="73-幂等消费">7.3 幂等消费</h3>
+<p>消息队列通常是至少一次投递，消费者可能因网络中断、确认超时或重试重复收到同一消息。消费者业务应保证幂等：同一消息处理一次与多次，最终结果一致。常见做法是为消息设置唯一业务编号，数据库建唯一约束或记录处理状态；消费前检查是否已处理，已处理则直接确认，避免重复扣款、重复发券、重复创建数据。</p>
+<p><img src="/blog/spring-boot-rabbitmq/spring-boot-rabbitmq-03.png" alt="消息可靠性生命周期"></p>
+<h2 id="八常见问题排查">八、常见问题排查</h2>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>排查方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Connection refused</td>
+<td>RabbitMQ 服务是否启动、host/port 是否正确、防火墙与安全组是否放行 AMQP 端口</td>
+</tr>
+<tr>
+<td>ACCESS_REFUSED</td>
+<td>用户名、密码、virtual-host 是否正确，用户是否具备 configure/write/read 权限</td>
+</tr>
+<tr>
+<td>发送后队列无消息</td>
+<td>交换机名称、路由键、Binding 是否正确；Topic 通配符是否匹配</td>
+</tr>
+<tr>
+<td>队列有消息但消费者不处理</td>
+<td>消费者是否启动、<code>@RabbitListener</code> 是否扫描成功、队列名是否正确、是否异常阻塞</td>
+</tr>
+<tr>
+<td>消息重复消费</td>
+<td>ACK 是否正常、异常重试与网络中断情况，结合业务唯一标识做幂等</td>
+</tr>
+<tr>
+<td>消息一直 Unacked</td>
+<td>手动确认逻辑是否遗漏、业务方法是否长时间未返回、消费者是否阻塞</td>
+</tr>
+</tbody>
+</table>
+<h2 id="九生产环境建议">九、生产环境建议</h2>
+<ul>
+<li><strong>账号安全</strong>：每个应用独立账号、最小权限、强密码，不在配置文件或代码仓库明文保存生产密码；</li>
+<li><strong>重试与死信</strong>：配置有限次数重试，超过次数进入死信队列，并建立人工排查或补偿流程；</li>
+<li><strong>并发控制</strong>：按业务处理能力调整 <code>concurrency</code>、<code>max-concurrency</code>、<code>prefetch</code>，避免过高压垮下游；</li>
+<li><strong>监控告警</strong>：关注队列堆积量、消费速率、Unacked 数、连接状态与死信数量；</li>
+<li><strong>日志追踪</strong>：消息携带唯一业务编号或 TraceId，生产者与消费者都记录，便于跨服务排查。</li>
+</ul>
+<h2 id="十小结">十、小结</h2>
+<ul>
+<li>消息链路为生产者 → 交换机 → 队列 → 消费者；交换机负责路由，队列负责存储，两者分离；</li>
+<li>引入 <code>spring-boot-starter-amqp</code>，生产者用 <code>RabbitTemplate.convertAndSend</code>，消费者用 <code>@RabbitListener</code> 监听；</li>
+<li>Topic 交换机靠路由键与 <code>*</code>/<code>#</code> 通配符绑定队列；手动确认模式下业务成功后 <code>basicAck</code>，失败按策略 <code>basicNack</code>；</li>
+<li>可靠性需要 ACK、持久化、发布确认与幂等消费共同保障；生产环境关注并发、死信、监控与链路追踪。</li>
+</ul>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏，示例中的账号、地址、密码均为占位符。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-rabbitmq/">https://zhanzhenguan.github.io/blog/spring-boot-rabbitmq/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a> <p>整理 Spring Boot 3 整合 Kafka 3.9.x 的要点：版本基线与 BOM 管理、Docker 单节点 KRaft 部署（docker run 与 docker compose）、生产者可靠性配置、Key 分区与顺序、容器管理 Offset、可重试/不可重试异常分流、DLT 死信队列与二进制头解码、嵌入式 Broker 测试，以及消费幂等、Outbox 双写等生产补课项。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a> <p>整理 Spring Boot 2.7 整合 RocketMQ 4.9.x 的要点：starter 与客户端版本匹配、NameServer/Broker 端口确认、依赖与配置、消息契约序列化约束、五种发送方式选型、事务消息半消息与回查、Tag 过滤与顺序消费、数据库唯一键幂等同事务、延迟等级关单，以及常见踩坑与上线检查项。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a> <p>整理 Spring Boot 3 整合 RocketMQ 5.x 的要点：5.x gRPC Proxy 架构与 4.x 差异、服务端与 Topic 准备、starter 依赖与配置、生产者四类消息发送、消费者 MessageView 解析与异常策略、幂等消费、事务消息半消息流程与回查，以及常见踩坑。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-prometheus/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</div> </a> <a class="next" href="/blog/spring-boot-redis/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性","description":"整理 Spring Boot 整合 RabbitMQ 的要点：消息流转模型、amqp 依赖、连接与监听配置、Topic 交换机/队列/绑定声明、RabbitTemplate 发送、@RabbitListener 监听与手动 ACK，以及消息确认、持久化、发布确认、幂等消费与排查建议。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-rabbitmq/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

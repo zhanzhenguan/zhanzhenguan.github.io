@@ -1,0 +1,460 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 2.7 整合 RocketMQ 4.9.x 的要点：starter 与客户端版本匹配、NameServer/Broker 端口确认、依赖与配置、消息契约序列化约束、五种发送方式选型、事务消息半消息与回查、Tag 过滤与顺序消费、数据库唯一键幂等同事务、延迟等级关单，以及常见踩坑与上线检查项。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费"><meta property="og:description" content="整理 Spring Boot 2.7 整合 RocketMQ 4.9.x 的要点：starter 与客户端版本匹配、NameServer/Broker 端口确认、依赖与配置、消息契约序列化约束、五种发送方式选型、事务消息半消息与回查、Tag 过滤与顺序消费、数据库唯一键幂等同事务、延迟等级关单，以及常见踩坑与上线检查项。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-rocketmq4/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 9 分钟</span> <span>· 2844 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/rocketmq/">#RocketMQ</a><a class="tag" href="/tags/8bedb7aa/">#消息队列</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li class="current">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费（本文）</li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第十一部分，整合 RocketMQ 4.x。技术栈：JDK 17 + Spring Boot 2.7.18 + Broker 4.9.4 + <code>rocketmq-spring-boot-starter</code> 2.2.2。4.9.x 仍是很多团队在用的稳定版本，这篇重点记录版本匹配、本地事务一致性与消费幂等这些容易踩隐性坑的部分。代码为通用示例，连接信息用占位符。</p>
+<h2 id="一先定版本starter-与客户端必须匹配-broker">一、先定版本：starter 与客户端必须匹配 Broker</h2>
+<p>结论：<strong>Spring Boot 2.7.18 + <code>rocketmq-spring-boot-starter</code> 2.2.2</strong>。</p>
+<p>不要盲目上 2.3.x。Apache RocketMQ Spring 父 POM 里锁定的底层客户端版本：</p>
+<table>
+<thead>
+<tr>
+<th>Starter 版本</th>
+<th>父 POM 中的 <code>rocketmq.version</code></th>
+<th>适配 4.9.x Broker</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2.2.0</td>
+<td>4.8.0</td>
+<td>同系列，可试</td>
+</tr>
+<tr>
+<td>2.2.1</td>
+<td>4.9.1</td>
+<td>可以</td>
+</tr>
+<tr>
+<td>2.2.2</td>
+<td>4.9.3</td>
+<td>可以，与 4.9.4 同属 4.9 系列</td>
+</tr>
+<tr>
+<td>2.2.3</td>
+<td>5.0.0</td>
+<td>不建议</td>
+</tr>
+<tr>
+<td>2.3.6</td>
+<td>5.3.2</td>
+<td>不建议</td>
+</tr>
+</tbody>
+</table>
+<p><strong>从 2.2.3 开始，Starter 底层已经换成 RocketMQ 5.x 客户端</strong>。跑在 4.9.x Broker 上未必启动失败，更常见的表现是某些请求 Broker 不认、或客户端解析不了响应，出现 <code>NoSuchMethodError</code>、<code>ClassNotFoundException</code> 或莫名其妙的超时；编译期完全正常，排查成本很高。</p>
+<p>锁定 2.2.2 后，它父 POM 依赖 <code>rocketmq-client 4.9.3</code>，与 4.9.4 Broker 同协议系列。依赖拉下来后务必自己核一遍：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mvn</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> dependency:tree</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -Dincludes=org.apache.rocketmq</span></span></code></pre>
+<p>看到 <code>rocketmq-client:4.9.3</code> 且只有一个版本即可。</p>
+<h2 id="二环境确认先看端口再看日志">二、环境确认：先看端口，再看日志</h2>
+<p>先确认服务端真的在监听：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">netstat</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -ano</span><span style="color:#D73A49;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> findstr</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> :9876</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">netstat</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -ano</span><span style="color:#D73A49;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> findstr</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> :10911</span></span></code></pre>
+<ul>
+<li><strong>9876</strong>：NameServer，只维护路由信息，不存消息；</li>
+<li><strong>10911</strong>：Broker 主端口，真正负责消息存储与投递。</li>
+</ul>
+<p>生产端连接 9876 拿路由，真正落盘发生在 10911，两者不要混淆。</p>
+<p><img src="/blog/spring-boot-rocketmq4/spring-boot-rocketmq4-01.png" alt="RocketMQ 4.x 接入架构"></p>
+<h2 id="三项目骨架与启动类">三、项目骨架与启动类</h2>
+<p>分层按职责切：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="plaintext"><code><span class="line"><span>src/main/java/com/example/rocketmq4</span></span>
+<span class="line"><span>├── RocketMq4Application.java</span></span>
+<span class="line"><span>├── common      # 统一响应、Topic/Tag/Group 常量</span></span>
+<span class="line"><span>├── config      # 全局异常处理</span></span>
+<span class="line"><span>├── controller  # 订单接口 + 消息能力验证接口</span></span>
+<span class="line"><span>├── dto         # OrderEvent（消息契约）</span></span>
+<span class="line"><span>├── order       # 订单仓储、幂等记录、通知流水</span></span>
+<span class="line"><span>├── producer    # 发送统一出口</span></span>
+<span class="line"><span>├── service     # 业务、本地事务、消费处理</span></span>
+<span class="line"><span>├── consumer    # 各场景消费者</span></span>
+<span class="line"><span>└── tx          # 事务消息监听器</span></span></code></pre>
+<p>启动类不需要额外注解：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">SpringBootApplication</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RocketMq4Application</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">[] </span><span style="color:#E36209;--shiki-dark:#FFAB70">args</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        SpringApplication.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(RocketMq4Application.class, args);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>rocketmq-spring-boot-starter</code> 通过自动配置装配 <code>RocketMQTemplate</code> 和监听容器。老文章里的 <code>@EnableRocketMQ</code> 是 1.x 时代写法，当前版本没有这个注解。</p>
+<h2 id="四依赖与配置">四、依赖与配置</h2>
+<h3 id="41-maven-依赖">4.1 Maven 依赖</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">parent</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-parent&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>2.7.18&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">parent</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">properties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">java.version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>17&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">java.version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">rocketmq-starter.version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>2.2.2&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">rocketmq-starter.version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">properties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-web&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-jdbc&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>com.h2database&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>h2&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">scope</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>runtime&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">scope</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.apache.rocketmq&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>rocketmq-spring-boot-starter&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>${rocketmq-starter.version}&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="42-applicationyml">4.2 application.yml</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">server</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  port</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">8090</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  datasource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">jdbc:h2:mem:rocketmq4;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    driver-class-name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">org.h2.Driver</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">sa</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">""</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    sql</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      init</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        mode</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">always</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        schema-locations</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">classpath:db/schema.sql</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">rocketmq</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  name-server</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">127.0.0.1:9876</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  producer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    group</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">rocketmq4-demo-producer</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    send-message-timeout</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3000</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    retry-times-when-send-failed</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">2</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    retry-times-when-send-async-failed</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">2</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    max-message-size</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">4194304</span></span></code></pre>
+<p>参数含义：</p>
+<ul>
+<li><code>producer.group</code>：不是随便写的标签，事务消息回查、发送指标都按这个组归属，必须有业务含义；</li>
+<li><code>send-message-timeout</code>：单次同步发送的阻塞上限，不是重试总时长；</li>
+<li><code>retry-times-when-send-failed</code>：只对同步发送生效，指「没收到确认」的重试，不包含 Broker 明确返回失败的情况。</li>
+</ul>
+<h2 id="五消息契约时间用-epoch-毫秒别用-localdatetime">五、消息契约：时间用 epoch 毫秒，别用 LocalDateTime</h2>
+<p>消息 DTO：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Data</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Builder</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">NoArgsConstructor</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">AllArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> OrderEvent</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Serializable</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 事件唯一标识，消费幂等键 */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String eventId;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String orderId;</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** CREATED / PAID / STATUS_CHANGED / CLOSED */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String eventType;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String status;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String userId;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> BigDecimal amount;</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 事件发生时间，epoch 毫秒 */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> long</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> eventTime;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> int</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> schemaVersion;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String remark;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>注意 <code>eventTime</code> 是 <code>long</code> 而不是 <code>LocalDateTime</code>。原因：<code>rocketmq-spring</code> 的 <code>MappingJackson2MessageConverter</code> 内部 <strong>自己 new 了一个 ObjectMapper</strong>，不会复用容器里注册了 <code>JavaTimeModule</code> 的实例。接口层用 <code>LocalDateTime</code> 正常，一进消息就抛：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="plaintext"><code><span class="line"><span>Java 8 date/time type `java.time.LocalDateTime` not supported by default</span></span></code></pre>
+<p>解决方式有三种：注册自定义 MessageConverter、给字段加 <code>@JsonSerialize</code>、或直接用 epoch 毫秒。消息契约跨语言、跨版本，时间戳是最稳的表达，也让消费端不依赖任何 Jackson 扩展。</p>
+<p>另外，<strong>不要把数据库实体直接当消息发出去</strong>。实体字段随表结构变化，消息契约一变所有订阅方都得跟着改；DTO 独立演进、加字段给默认值，才能向后兼容。</p>
+<h2 id="六五种发送方式收敛到一个出口">六、五种发送方式，收敛到一个出口</h2>
+<p>业务代码不要到处 <code>@Autowired RocketMQTemplate</code>，封成统一出口：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Slf4j</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Component</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> OrderEventProducer</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#D73A49;--shiki-dark:#F97583"> long</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SEND_TIMEOUT </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 3000L</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RocketMQTemplate rocketMQTemplate;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Message&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">OrderEvent</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">buildMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(OrderEvent </span><span style="color:#E36209;--shiki-dark:#FFAB70">event</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MessageBuilder.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">withPayload</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHeader</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(RocketMQHeaders.KEYS, event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 同步：等 Broker 确认 */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SendResult </span><span style="color:#6F42C1;--shiki-dark:#B392F0">sendSync</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">destination</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, OrderEvent </span><span style="color:#E36209;--shiki-dark:#FFAB70">event</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> rocketMQTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">syncSend</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(destination, </span><span style="color:#6F42C1;--shiki-dark:#B392F0">buildMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event), SEND_TIMEOUT);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 异步：不阻塞，但必须处理失败回调 */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sendAsync</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">destination</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, OrderEvent </span><span style="color:#E36209;--shiki-dark:#FFAB70">event</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        rocketMQTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">asyncSend</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(destination, </span><span style="color:#6F42C1;--shiki-dark:#B392F0">buildMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event), </span><span style="color:#D73A49;--shiki-dark:#F97583">new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SendCallback</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> onSuccess</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(SendResult </span><span style="color:#E36209;--shiki-dark:#FFAB70">result</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"[异步发送-成功] msgId={}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, result.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getMsgId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> onException</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Throwable </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">                // 生产环境这里要落库进补偿任务，不能只打日志</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">error</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"[异步发送-失败] orderId={}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(), e);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }, SEND_TIMEOUT);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 单向：不等待任何确认 */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sendOneWay</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">destination</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, OrderEvent </span><span style="color:#E36209;--shiki-dark:#FFAB70">event</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        rocketMQTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">sendOneWay</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(destination, </span><span style="color:#6F42C1;--shiki-dark:#B392F0">buildMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 顺序：hashKey 决定进哪个队列 */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SendResult </span><span style="color:#6F42C1;--shiki-dark:#B392F0">sendOrderly</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">destination</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, OrderEvent </span><span style="color:#E36209;--shiki-dark:#FFAB70">event</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, String </span><span style="color:#E36209;--shiki-dark:#FFAB70">hashKey</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> rocketMQTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">syncSendOrderly</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(destination, </span><span style="color:#6F42C1;--shiki-dark:#B392F0">buildMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event), hashKey, SEND_TIMEOUT);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    /** 延迟：只有 Broker 预置的等级，没有任意时间 */</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SendResult </span><span style="color:#6F42C1;--shiki-dark:#B392F0">sendDelay</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">destination</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, OrderEvent </span><span style="color:#E36209;--shiki-dark:#FFAB70">event</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">int</span><span style="color:#E36209;--shiki-dark:#FFAB70"> level</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> rocketMQTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">syncSend</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(destination, </span><span style="color:#6F42C1;--shiki-dark:#B392F0">buildMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event), SEND_TIMEOUT, level);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>目的地写法是 <code>topic:tag</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">rocketMQTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">syncSend</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"order-topic:created"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, message, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<p><code>KEYS</code> 是特殊 header，控制台可按它检索消息，排查线上问题很有用；但<strong>它不是幂等键</strong>——只用于检索，不保证唯一，也不参与投递判断，幂等要靠业务自己的 <code>eventId</code>。</p>
+<p>五种方式选型：</p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>是否等确认</th>
+<th>性能</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>同步 <code>syncSend</code></td>
+<td>等</td>
+<td>低</td>
+<td>订单、支付等必须知道结果的</td>
+</tr>
+<tr>
+<td>异步 <code>asyncSend</code></td>
+<td>不等，回调通知</td>
+<td>中</td>
+<td>高吞吐又要能感知失败</td>
+</tr>
+<tr>
+<td>单向 <code>sendOneWay</code></td>
+<td>不等，无回调</td>
+<td>高</td>
+<td>日志、埋点，允许丢</td>
+</tr>
+<tr>
+<td>顺序 <code>syncSendOrderly</code></td>
+<td>等</td>
+<td>低</td>
+<td>同一实体的状态流转</td>
+</tr>
+<tr>
+<td>延迟 <code>sendDelay</code></td>
+<td>等</td>
+<td>中</td>
+<td>超时关单、延迟提醒</td>
+</tr>
+</tbody>
+</table>
+<p><img src="/blog/spring-boot-rocketmq4/spring-boot-rocketmq4-02.png" alt="五种发送方式"></p>
+<h2 id="七事务消息订单落库与事件投递的一致性">七、事务消息：订单落库与事件投递的一致性</h2>
+<p>普通消息存在两难：先写库再发消息，消息失败则库里有订单但下游不知道；先发消息再写库，写库失败则下游收到不存在的订单。本地事务管不了 MQ。</p>
+<p>RocketMQ 的解法是半消息：先把消息发给 Broker 但标记为不可投递，然后执行本地事务；成功提交消息，失败回滚。Broker 长时间收不到确认，会反过来回查生产者这笔事务到底成没成。</p>
+<h3 id="71-发送端">7.1 发送端</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> OrderEvent </span><span style="color:#6F42C1;--shiki-dark:#B392F0">placeOrder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(PlaceOrderCommand command) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (orderRepository.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">exists</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(command.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        throw</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> IllegalStateException</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"订单已存在，请勿重复提交："</span><span style="color:#D73A49;--shiki-dark:#F97583"> +</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> command.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    OrderEvent event </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> OrderEvent.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">eventId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(UUID.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">randomUUID</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">toString</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">orderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(command.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">eventType</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"CREATED"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">status</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(OrderStatus.CREATED)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">userId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(command.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getUserId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">amount</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(command.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getAmount</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">eventTime</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(System.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">currentTimeMillis</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">schemaVersion</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    TransactionSendResult result </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            rocketMQTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">sendMessageInTransaction</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(TX_TOPIC, </span><span style="color:#6F42C1;--shiki-dark:#B392F0">buildMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event), command);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (result.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getLocalTransactionState</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">!=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> LocalTransactionState.COMMIT_MESSAGE) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        throw</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> IllegalStateException</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"订单创建未生效，orderId="</span><span style="color:#D73A49;--shiki-dark:#F97583"> +</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> command.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> event;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>第三个参数 <code>arg</code> 会原样传给本地事务监听器。这里把整个下单命令塞进去，本地事务就不必再从消息体反序列化一次。</p>
+<h3 id="72-本地事务与回查">7.2 本地事务与回查</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RocketMQTransactionListener</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> OrderTransactionListener</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RocketMQLocalTransactionListener</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> LocalTransactionService localTransactionService;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RocketMQLocalTransactionState </span><span style="color:#6F42C1;--shiki-dark:#B392F0">executeLocalTransaction</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Message </span><span style="color:#E36209;--shiki-dark:#FFAB70">message</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, Object </span><span style="color:#E36209;--shiki-dark:#FFAB70">arg</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        PlaceOrderCommand command </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (PlaceOrderCommand) arg;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        try</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            localTransactionService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">createOrder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(command);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RocketMQLocalTransactionState.COMMIT;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        } </span><span style="color:#D73A49;--shiki-dark:#F97583">catch</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (DuplicateKeyException </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">            // 并发重复提交，回滚半消息，避免下游再收一条重复事件</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RocketMQLocalTransactionState.ROLLBACK;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        } </span><span style="color:#D73A49;--shiki-dark:#F97583">catch</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (Exception </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RocketMQLocalTransactionState.ROLLBACK;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RocketMQLocalTransactionState </span><span style="color:#6F42C1;--shiki-dark:#B392F0">checkLocalTransaction</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Message </span><span style="color:#E36209;--shiki-dark:#FFAB70">message</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String orderId </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (String) message.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getHeaders</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">get</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(RocketMQHeaders.KEYS);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (orderId </span><span style="color:#D73A49;--shiki-dark:#F97583">==</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> null</span><span style="color:#D73A49;--shiki-dark:#F97583"> ||</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orderId.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">isEmpty</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RocketMQLocalTransactionState.UNKNOWN;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> localTransactionService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">exists</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(orderId)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">                ?</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RocketMQLocalTransactionState.COMMIT</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">                :</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RocketMQLocalTransactionState.ROLLBACK;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>两个设计决定：</p>
+<p><strong>第一，本地事务必须放在独立 Bean 里。</strong> <code>createOrder</code> 带 <code>@Transactional</code>，若与调用方在同一类就是自调用，不走 Spring 代理，事务注解静默失效——代码能跑但回滚不了，这种 bug 最难发现。</p>
+<p><strong>第二，回查不能依赖内存状态。</strong> 回查发生在 Broker 判断「消息状态不明」时，可能几十秒后，也可能生产者已经重启过。判定依据只能是数据库持久化结果；查不出来（如消息缺 KEYS）返回 <code>UNKNOWN</code>，让 Broker 继续问，而不是拍脑袋给 COMMIT。</p>
+<h3 id="73-重复提交两道防线">7.3 重复提交两道防线</h3>
+<p>最初一版本地事务遇到主键冲突就返回 COMMIT，理由是「订单已存在说明之前成功」。实测问题：同一 orderId 提交两次，第二次虽没插进库，但半消息被提交，下游又收到一条创建事件，通知流水多一条。幂等做在了订单表，没做在事件上。</p>
+<p>正确做法：入口先 <code>exists</code> 挡掉；并发场景漏过去的靠 <code>DuplicateKeyException</code> 回滚半消息。两道防线保证消息不重复投递。</p>
+<p><code>sendMessageInTransaction</code> 返回的 <code>LocalTransactionState</code> 只有 <code>COMMIT_MESSAGE</code> 才继续往下走；<code>UNKNOWN</code> 意味着 Broker 稍后回查，此时补发延迟消息没有意义。</p>
+<p><img src="/blog/spring-boot-rocketmq4/spring-boot-rocketmq4-03.png" alt="事务消息流程与回查"></p>
+<h2 id="八消费端要处理的三件事">八、消费端要处理的三件事</h2>
+<h3 id="81-tag-过滤一个-topic多个订阅方">8.1 Tag 过滤：一个 Topic，多个订阅方</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Component</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RocketMQMessageListener</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        topic</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MqConst.ORDER_TOPIC,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        consumerGroup</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MqConst.GROUP_CREATED,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        selectorExpression</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MqConst.TAG_CREATED)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> OrderCreatedConsumer</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RocketMQListener</span><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">OrderEvent</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> onMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(OrderEvent </span><span style="color:#E36209;--shiki-dark:#FFAB70">event</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        try</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            consumeService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">handleCreated</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        } </span><span style="color:#D73A49;--shiki-dark:#F97583">catch</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (Exception </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">error</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"[消费失败] orderId={}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(), e);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            throw</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RuntimeException</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(e);   </span><span style="color:#6A737D;--shiki-dark:#6A737D">// 必须抛，否则框架认为消费成功</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>同一个 <code>order-topic</code> 下，<code>created</code> 和 <code>paid</code> 各有消费者，用不同消费组。标准做法：<strong>不同业务方用不同 Group，各管各的位点</strong>。两个业务方塞进同一个 Group，消息会被分摊，每个业务方只收到一部分，这是很常见的误用。</p>
+<h3 id="82-顺序消费">8.2 顺序消费</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RocketMQMessageListener</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        topic</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MqConst.ORDER_TOPIC,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        consumerGroup</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MqConst.GROUP_STATUS,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        selectorExpression</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MqConst.TAG_STATUS,</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        consumeMode</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ConsumeMode.ORDERLY)</span></span></code></pre>
+<p>生产端配合 <code>syncSendOrderly(destination, message, orderId)</code>，同一 orderId 哈希到同一队列；消费端 <code>ORDERLY</code> 按队列加锁顺序消费。</p>
+<p>代价要说清楚：一条消息卡住，整个队列后面的消息都等着。顺序消费的业务逻辑必须短、可控，不要在里面同步调外部接口。RocketMQ 4.x 的顺序是<strong>队列内有序</strong>，不是 Topic 全局有序；不同订单之间没有先后关系。</p>
+<h3 id="83-幂等数据库唯一键别靠内存">8.3 幂等：数据库唯一键，别靠内存</h3>
+<p>幂等表关键 DDL：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="color:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> mq_consume_record</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    id            </span><span style="color:#D73A49;--shiki-dark:#F97583">BIGINT</span><span style="color:#D73A49;--shiki-dark:#F97583"> PRIMARY KEY</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> AUTO_INCREMENT,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    consumer_group </span><span style="color:#D73A49;--shiki-dark:#F97583">VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">128</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">NOT NULL</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    event_id      </span><span style="color:#D73A49;--shiki-dark:#F97583">VARCHAR</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">64</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">NOT NULL</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    created_at    </span><span style="color:#D73A49;--shiki-dark:#F97583">BIGINT</span><span style="color:#D73A49;--shiki-dark:#F97583"> NOT NULL</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    CONSTRAINT</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> uk_group_event </span><span style="color:#D73A49;--shiki-dark:#F97583">UNIQUE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (consumer_group, event_id)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<p>消费逻辑：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Transactional</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">rollbackFor</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Exception.class)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> handleCreated</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(OrderEvent event) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#D73A49;--shiki-dark:#F97583">!</span><span style="color:#6F42C1;--shiki-dark:#B392F0">firstConsume</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MqConst.GROUP_CREATED, event)) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    notifyRepository.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">insert</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(), event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getEventId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#9ECBFF">            "CREATED"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, System.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">currentTimeMillis</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">private</span><span style="color:#D73A49;--shiki-dark:#F97583"> boolean</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> firstConsume</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String consumerGroup, OrderEvent event) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> first </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> consumeRecordRepository.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">tryInsert</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            consumerGroup, event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getEventId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(), System.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">currentTimeMillis</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#D73A49;--shiki-dark:#F97583">!</span><span style="color:#24292E;--shiki-dark:#E1E4E8">first) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">warn</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"[幂等拦截] 重复消息已忽略，eventId={}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getEventId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> first;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>tryInsert</code> 捕获 <code>DuplicateKeyException</code> 返回 false，表示这条消息处理过。</p>
+<p><strong>关键点在 <code>@Transactional</code> 的位置：必须在 Service 上，不能在 <code>onMessage</code> 上。</strong> <code>onMessage</code> 由 RocketMQ 线程直接调用，不经过 Spring 代理，注解不生效。</p>
+<p>为什么一定要事务：「写幂等记录」和「写业务数据」必须同生共死——</p>
+<ul>
+<li>业务成功、记录没写 → 下次重试重复处理；</li>
+<li>记录写了、业务失败 → 消息被永久标记「已消费」，业务永远丢了（更致命且隐蔽）。</li>
+</ul>
+<p>放在同一事务里，业务抛异常 → 事务回滚 → 幂等记录一并回滚 → 下次重试还能完整走一遍。另外不要在代码里 catch 住异常只打日志然后正常返回：框架看到方法正常结束就认为消费成功，消息再也不会重投，等于静默丢消息。</p>
+<p><img src="/blog/spring-boot-rocketmq4/spring-boot-rocketmq4-04.png" alt="幂等记录与业务同事务"></p>
+<h2 id="九延迟消息做超时关单">九、延迟消息做超时关单</h2>
+<p>RocketMQ 4.x 延迟消息只有固定等级，没有任意时间。默认 18 个等级：1s、5s、10s、30s、1m、2m……2h，等级 3 对应 10 秒。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">// 下单成功后补发，失败也不影响主流程，由兜底任务补偿</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">producer.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">sendDelay</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(ORDER_TIMEOUT_TOPIC, timeoutEvent, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<p>消费端不能「收到就关单」，必须回查业务状态：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Transactional</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">rollbackFor</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Exception.class)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> handleTimeoutCheck</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(OrderEvent event) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="color:#D73A49;--shiki-dark:#F97583">!</span><span style="color:#6F42C1;--shiki-dark:#B392F0">firstConsume</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MqConst.GROUP_TIMEOUT, event)) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    OrderRecord order </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orderService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">findOrder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">orElse</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">null</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (order </span><span style="color:#D73A49;--shiki-dark:#F97583">==</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> null</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">warn</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"[消费-timeout] 订单不存在，忽略超时消息，orderId={}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (OrderStatus.CREATED.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">equals</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(order.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getStatus</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            &#x26;&#x26;</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orderService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">closeOrderIfUnpaid</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(order.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"[消费-timeout] 订单超时未支付，已关闭，orderId={}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, event.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getOrderId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    } </span><span style="color:#D73A49;--shiki-dark:#F97583">else</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"[消费-timeout] 订单当前状态为 {}，无需关单"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, order.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getStatus</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>关单本身是条件更新：<code>UPDATE ... SET status='CLOSED' WHERE order_id=? AND status='CREATED'</code>。返回 0 行说明订单已被支付或已被别的线程关掉，直接跳过。这条 SQL 是并发安全的关键，别用「先查再改」。</p>
+<h2 id="十踩坑清单">十、踩坑清单</h2>
+<p><strong>1. 端口冲突报了个没配过的端口</strong></p>
+<p>报错端口号和配置对不上时（例如配置 8080 却报别的端口占用），先怀疑有更高优先级的配置源覆盖。Spring Boot 配置优先级：命令行参数 > <code>SPRING_APPLICATION_JSON</code> > 系统属性 > 环境变量 > 配置文件。用 <code>--server.port=8090</code> 显式传一次即可确认。</p>
+<p><strong>2. 控制台中文乱码</strong></p>
+<p>JDK 17 在 Windows 下默认字符集仍是 GBK（默认 UTF-8 是 JDK 18 才落地）。源码和日志文件是 UTF-8，控制台按 GBK 解码就成乱码。解法：启动参数加 <code>-Dfile.encoding=UTF-8</code>；IDEA File Encoding 全部设 UTF-8；或升级 JDK 18+。</p>
+<p><strong>3. 消费者启动后半天收不到消息</strong></p>
+<p>新 Topic 第一次写入时由 Broker 自动创建，消费者此时还没拿到路由。客户端路由信息默认 30 秒刷新一次，刚启动就发消息可能要等半分钟才被消费。生产环境应提前建好 Topic，别依赖自动创建。</p>
+<p><strong>4. 事务消息回查一直 UNKNOWN</strong></p>
+<p>回查取不到 KEYS，多半是发送时没设置 header，<code>MessageBuilder.setHeader(RocketMQHeaders.KEYS, orderId)</code> 别漏。回查方法里也不要用 <code>ThreadLocal</code> 或内存变量判断——回查线程和发送线程不是同一个。</p>
+<p><strong>5. 顺序消息把队列堵死</strong></p>
+<p>顺序消费失败会阻塞整个队列。若业务里有「偶发失败靠重试恢复」的逻辑，在顺序队列里就是灾难：一条毒消息能让队列停摆。要么保证顺序队列逻辑不会失败，要么用挂起当前队列的机制控制阻塞时长。</p>
+<h2 id="十一上线前检查项">十一、上线前检查项</h2>
+<ul>
+<li>用 <code>dependency:tree</code> 确认 <code>rocketmq-client</code> 只有一个版本，且与 Broker 匹配；</li>
+<li>生产环境关掉 <code>autoCreateTopicEnable</code>，Topic 和消费组提前创建；</li>
+<li>关键链路用同步发送或可靠异步，失败要有落库补偿，不能只打日志；</li>
+<li>消费端幂等用数据库唯一键，不用 Redis 短 TTL 锁；</li>
+<li>死信队列、消费堆积、发送失败率都要有监控告警；</li>
+<li>消息体不要放敏感信息，日志脱敏；</li>
+<li>顺序消费的队列数要评估，队列数决定并行度上限。</li>
+</ul>
+<h2 id="十二小结">十二、小结</h2>
+<ul>
+<li>4.x 整合的第一步是版本匹配：starter 2.2.2 对应 client 4.9.3，2.2.3 起底层换 5.x 客户端，不要乱上高版本；</li>
+<li>生产者收敛到统一出口，按同步/异步/单向/顺序/延迟五种语义选型；<code>KEYS</code> 只用于检索，幂等靠业务 <code>eventId</code>；</li>
+<li>事务消息走半消息 → 本地事务 → 提交/回滚 → 回查，本地事务放独立 Bean，回查只读数据库；</li>
+<li>消费端用不同 Group 做 Tag 过滤，顺序消费是队列内有序；幂等记录与业务数据在同一本地事务，事务注解加在 Service 上；</li>
+<li>延迟消息只有固定等级，关单靠条件更新 + 状态回查；重点避开版本错配、配置覆盖、字符集、路由延迟、回查状态、队列阻塞这几类坑。</li>
+</ul>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏，示例中的账号、地址、密码均为占位符。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-rocketmq4/">https://zhanzhenguan.github.io/blog/spring-boot-rocketmq4/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a> <p>整理 Spring Boot 3 整合 RocketMQ 5.x 的要点：5.x gRPC Proxy 架构与 4.x 差异、服务端与 Topic 准备、starter 依赖与配置、生产者四类消息发送、消费者 MessageView 解析与异常策略、幂等消费、事务消息半消息流程与回查，以及常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a> <p>整理 Spring Boot 3 整合 Kafka 3.9.x 的要点：版本基线与 BOM 管理、Docker 单节点 KRaft 部署（docker run 与 docker compose）、生产者可靠性配置、Key 分区与顺序、容器管理 Offset、可重试/不可重试异常分流、DLT 死信队列与二进制头解码、嵌入式 Broker 测试，以及消费幂等、Outbox 双写等生产补课项。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a> <p>整理 Spring Boot 整合 RabbitMQ 的要点：消息流转模型、amqp 依赖、连接与监听配置、Topic 交换机/队列/绑定声明、RabbitTemplate 发送、@RabbitListener 监听与手动 ACK，以及消息确认、持久化、发布确认、幂等消费与排查建议。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-redisson/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</div> </a> <a class="next" href="/blog/spring-boot-rocketmq5/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费","description":"整理 Spring Boot 2.7 整合 RocketMQ 4.9.x 的要点：starter 与客户端版本匹配、NameServer/Broker 端口确认、依赖与配置、消息契约序列化约束、五种发送方式选型、事务消息半消息与回查、Tag 过滤与顺序消费、数据库唯一键幂等同事务、延迟等级关单，以及常见踩坑与上线检查项。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-rocketmq4/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

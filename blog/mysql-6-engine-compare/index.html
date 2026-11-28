@@ -1,0 +1,192 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="系统对比 MySQL 两大存储引擎：存储引擎的职责定位；InnoDB 与 MyISAM 在事务 ACID、锁粒度（行锁/表锁）、外键、MVCC、崩溃恢复、聚簇/非聚簇索引、数据存储文件、全文索引、COUNT(*)、压缩能力上的差异；行锁为何必须走索引；聚簇索引主键叶子存整行、辅助索引存主键值并回表；MyISAM 崩溃后的手动修复手段；COUNT(*) 与全文索引差异；MySQL 5.5 起默认 InnoDB、阿里开发手册强制规范；附面试口语回答模板。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="InnoDB 与 MyISAM 存储引擎区别：事务、锁、索引结构、崩溃恢复"><meta property="og:description" content="系统对比 MySQL 两大存储引擎：存储引擎的职责定位；InnoDB 与 MyISAM 在事务 ACID、锁粒度（行锁/表锁）、外键、MVCC、崩溃恢复、聚簇/非聚簇索引、数据存储文件、全文索引、COUNT(*)、压缩能力上的差异；行锁为何必须走索引；聚簇索引主键叶子存整行、辅助索引存主键值并回表；MyISAM 崩溃后的手动修复手段；COUNT(*) 与全文索引差异；MySQL 5.5 起默认 InnoDB、阿里开发手册强制规范；附面试口语回答模板。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/mysql-6-engine-compare/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>InnoDB 与 MyISAM 存储引擎区别：事务、锁、索引结构、崩溃恢复</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/mysql/">MySQL</a>  <span class="sep">/</span> <span class="current">InnoDB 与 MyISAM 存储引擎区别：事务、锁、索引结构、崩溃恢复</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>InnoDB 与 MyISAM 存储引擎区别：事务、锁、索引结构、崩溃恢复</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 7 分钟</span> <span>· 2347 字</span> <span class="meta-tags"> <a class="tag" href="/tags/mysql/">#MySQL</a><a class="tag" href="/tags/68051bf4/">#数据库</a><a class="tag" href="/tags/innodb/">#InnoDB</a><a class="tag" href="/tags/myisam/">#MyISAM</a><a class="tag" href="/tags/3f113298/">#存储引擎</a><a class="tag" href="/tags/1573c74e/">#面试</a> </span> </div> </header>   <p>这一篇按面试题的方式梳理 InnoDB 与 MyISAM 的区别，从存储引擎定位讲起，沿事务、锁、索引结构、崩溃恢复四条主线对比，最后给出选型结论与口语模板。SQL、命令为通用示例。</p>
+<h2 id="一什么是存储引擎">一、什么是存储引擎</h2>
+<p>存储引擎就是 MySQL 里<strong>负责数据存取的那个模块</strong>，决定数据怎么存、怎么查、支不支持事务、怎么加锁。</p>
+<p>可以把 MySQL 想象成一家快递公司：SQL 层是客服中心，负责接单、解析需求、优化路线；存储引擎是快递员，负责把包裹（数据）搬来搬去。不同引擎就是不同快递员，有的送得快但不保价，有的送得稳还包赔。</p>
+<p>MySQL 从 <strong>5.5 版本</strong>开始，默认存储引擎从 MyISAM 变成了 <strong>InnoDB</strong>。这个改动本身就是一个强烈信号：InnoDB 更适合现代 Web 应用。</p>
+<h2 id="二核心区别一览">二、核心区别一览</h2>
+<table>
+<thead>
+<tr>
+<th>对比维度</th>
+<th>InnoDB</th>
+<th>MyISAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>事务支持</strong></td>
+<td>支持（ACID）</td>
+<td>不支持</td>
+</tr>
+<tr>
+<td><strong>锁粒度</strong></td>
+<td>行级锁 + 间隙锁 + 表级锁</td>
+<td>仅表级锁</td>
+</tr>
+<tr>
+<td><strong>外键</strong></td>
+<td>支持</td>
+<td>不支持</td>
+</tr>
+<tr>
+<td><strong>MVCC</strong></td>
+<td>支持</td>
+<td>不支持</td>
+</tr>
+<tr>
+<td><strong>崩溃恢复</strong></td>
+<td>自动（redo log）</td>
+<td>不支持，需手动修复</td>
+</tr>
+<tr>
+<td><strong>索引结构</strong></td>
+<td>聚簇索引（主键索引即数据）</td>
+<td>非聚簇索引（索引与数据分离）</td>
+</tr>
+<tr>
+<td><strong>数据存储</strong></td>
+<td>表空间文件（或独立 <code>.ibd</code>）</td>
+<td>三文件：<code>.frm</code> + <code>.MYD</code> + <code>.MYI</code></td>
+</tr>
+<tr>
+<td><strong>全文索引</strong></td>
+<td>MySQL 5.6+ 支持</td>
+<td>原生支持</td>
+</tr>
+<tr>
+<td><strong>COUNT(*)</strong></td>
+<td>需要扫描</td>
+<td>直接读表元数据，极快</td>
+</tr>
+<tr>
+<td><strong>压缩能力</strong></td>
+<td>支持页压缩</td>
+<td>支持静态压缩，压缩比更高</td>
+</tr>
+<tr>
+<td><strong>适用场景</strong></td>
+<td>高并发读写、需要事务的 OLTP</td>
+<td>只读/报表分析、日志记录</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>面试小贴士：被问”两者区别”不要把表背一遍，最好分<strong>事务、锁、索引、恢复</strong>几个维度作答，显得思路清晰、结构完整。</p>
+</blockquote>
+<p><img src="/blog/mysql-6-engine-compare/mysql-6-engine-compare-01.png" alt="两大存储引擎对比"></p>
+<h2 id="三第一条分界线事务">三、第一条分界线：事务</h2>
+<p>这是两者最根本、最重要的区别。</p>
+<h3 id="31-innodb自带-acid-保障">3.1 InnoDB：自带 ACID 保障</h3>
+<p>InnoDB 支持完整事务：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">START TRANSACTION</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> account </span><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">-</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 张三转出 100</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> account </span><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">+</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 李四收到 100</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 两条要么都执行，要么都不执行</span></span></code></pre>
+<p>转账过程中系统崩溃，InnoDB 会自动回滚，保证一致性，这就是 ACID 中的<strong>原子性</strong>。其余一致性、隔离性、持久性，由 undo log、MVCC、redo log 等机制共同保证。</p>
+<h3 id="32-myisam事务不支持">3.2 MyISAM：事务不支持</h3>
+<p>同样一段转账代码，MyISAM 不支持事务，<code>COMMIT</code>/<code>ROLLBACK</code> 写了也不生效：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- MyISAM 不支持事务</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> account </span><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">-</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 这条执行了</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 啪！系统崩了</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> account </span><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="color:#D73A49;--shiki-dark:#F97583">+</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="color:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 这条没执行</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 结果：张三扣了 100，李四没收到——钱凭空消失</span></span></code></pre>
+<p>MyISAM 也没有崩溃自动恢复能力。系统崩溃后表可能损坏，需要手动执行 <code>REPAIR TABLE</code> 修复，且不能保证 100% 恢复数据。</p>
+<blockquote>
+<p>涉及<strong>钱、订单、库存</strong>等对一致性有要求的业务，千万别用 MyISAM。这不是性能问题，是安全性问题。</p>
+</blockquote>
+<p><strong>小结</strong>：需要事务 → 选 InnoDB，这是选型第一准则。</p>
+<h2 id="四第二条分界线锁机制">四、第二条分界线：锁机制</h2>
+<p>锁的差异直接决定两者在高并发场景下的性能表现。</p>
+<h3 id="41-myisam一锁锁全表">4.1 MyISAM：一锁锁全表</h3>
+<p>MyISAM 只支持<strong>表级锁</strong>：读操作加共享锁（允许多人同时读），写操作加排他锁（其他人读也不行、写也不行）。</p>
+<p>电商库存表若用 MyISAM：用户 A 下单更新某商品库存，整张表被写锁锁住；用户 B 想查看另一双鞋的库存也得排队。一千个人同时下单，一千个人都得等。这就是 MyISAM 写密集场景下的致命缺点——<strong>并发写性能极差</strong>。</p>
+<h3 id="42-innodb谁来锁谁精确制导">4.2 InnoDB：谁来锁谁，精确制导</h3>
+<p>InnoDB 支持<strong>行级锁</strong>：同样更新库存，用户 A 更新 id=1 的商品只锁第 1 行；用户 B 更新 id=2 的商品各行锁各行，互不影响。</p>
+<p>需要注意：InnoDB 的行锁加在<strong>索引</strong>上。如果 WHERE 条件没走索引，行锁会退化为表锁——这也是很多人以为用了 InnoDB 就有行锁、结果性能仍很差的原因。</p>
+<blockquote>
+<p>进阶补充：除行锁外，InnoDB 还有**间隙锁（Gap Lock）**锁住索引记录之间的空隙防止幻读；<strong>临键锁（Next-Key Lock）</strong> = 行锁 + 间隙锁，是默认行级锁算法。面试问到锁类型时主动提出会加分。</p>
+</blockquote>
+<p><strong>小结</strong>：需要高并发读写 → 选 InnoDB；要行锁就一定要走索引，否则还不如 MyISAM。</p>
+<p><img src="/blog/mysql-6-engine-compare/mysql-6-engine-compare-03.png" alt="行锁与表锁对比"></p>
+<h2 id="五第三条分界线索引结构">五、第三条分界线：索引结构</h2>
+<p>打个比方：一本字典”按拼音排序，每个字后面直接写完整释义”，这是 InnoDB 的聚簇索引；另一本”按拼音排序，但每个字后面只写’请翻到第 X 页’，得再翻一次看释义”，这是 MyISAM 的非聚簇索引。</p>
+<h3 id="51-myisam非聚簇索引索引和数据分家">5.1 MyISAM：非聚簇索引——索引和数据分家</h3>
+<p>MyISAM 的索引文件（<code>.MYI</code>）和数据文件（<code>.MYD</code>）分开存储。索引叶子节点存的不是完整数据，而是<strong>数据行的物理地址指针</strong>。无论主键索引还是辅助索引，叶子节点存的都是数据文件地址，拿到地址后再去数据文件取数据；主键索引与辅助索引结构上没有本质区别。</p>
+<h3 id="52-innodb聚簇索引索引即数据">5.2 InnoDB：聚簇索引——索引即数据</h3>
+<p>InnoDB 的数据按主键索引的 B+ 树组织，主键索引叶子节点直接存储<strong>完整行数据</strong>。</p>
+<p>关键区别在<strong>辅助索引</strong>：InnoDB 辅助索引叶子节点存的不是数据地址，而是<strong>主键值</strong>；通过辅助索引查到主键后，还需要<strong>回表</strong>再去主键索引查一次完整数据。</p>
+<p>由此引出两条实践建议：</p>
+<ul>
+<li>InnoDB 强烈建议用<strong>自增主键</strong>（插入时 B+ 树分裂少、磁盘 IO 更优）；</li>
+<li>能用<strong>覆盖索引</strong>就尽量用，避免回表。</li>
+</ul>
+<blockquote>
+<p>面试加分点：回答时主动点出聚簇索引特点、回表机制和覆盖索引概念，能体现是真正用过而非背答案。</p>
+</blockquote>
+<p><strong>小结</strong>：索引结构差异是两者查询性能表现不同的根源。</p>
+<p><img src="/blog/mysql-6-engine-compare/mysql-6-engine-compare-02.png" alt="聚簇与非聚簇索引"></p>
+<h2 id="六第四条分界线崩溃恢复与数据安全">六、第四条分界线：崩溃恢复与数据安全</h2>
+<p>这一区别常被新手忽略，但在生产环境极其致命。</p>
+<p>InnoDB 有 <strong>redo log</strong>（重做日志）和 <strong>undo log</strong>（回滚日志）。系统崩溃后重启 MySQL 时，InnoDB 自动通过 redo log 恢复已提交但未写入磁盘的数据，全程无需手动干预。</p>
+<p>MyISAM 没有日志机制，崩溃后表很可能损坏，需要手动自救：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mysqlcheck</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -r</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> database_name</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> table_name</span><span style="color:#6A737D;--shiki-dark:#6A737D">   # 修复表</span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">REPAIR </span><span style="color:#D73A49;--shiki-dark:#F97583">TABLE</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> my_table; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- SQL 修复命令</span></span></code></pre>
+<p>这两个命令能否完整恢复数据，并不保证。</p>
+<h2 id="七补充差异一览">七、补充差异一览</h2>
+<h3 id="71-count-性能">7.1 COUNT(*) 性能</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- MyISAM：秒出。表总行数存在表元数据里</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> COUNT</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">*</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> users;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- InnoDB：需要扫描。MVCC 下每条记录可能有多个版本，没法记录确定行数</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> COUNT</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">*</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">FROM</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> users;</span></span></code></pre>
+<p>经常做全表 <code>COUNT(*)</code> 且数据量大时，InnoDB 是劣势。变通方案：用 <code>SHOW TABLE STATUS</code> 取近似值，或自己用缓存维护计数。</p>
+<h3 id="72-全文索引">7.2 全文索引</h3>
+<p>MyISAM 天生支持全文索引，早期文章搜索很常见；InnoDB 直到 MySQL 5.6（2013 年）才支持。这个差异如今已基本抹平，真正的全文检索场景一般都用 Elasticsearch。</p>
+<h3 id="73-存储文件">7.3 存储文件</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span># MyISAM 三文件</span></span>
+<span class="line"><span>users.frm   # 表结构定义</span></span>
+<span class="line"><span>users.MYD   # 数据文件（MYData）</span></span>
+<span class="line"><span>users.MYI   # 索引文件（MYIndex）</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># InnoDB（独立表空间模式）</span></span>
+<span class="line"><span>users.frm   # 表结构定义（MySQL 8.0 后取消，集成到数据字典）</span></span>
+<span class="line"><span>users.ibd   # 数据 + 索引，都在一个文件里</span></span></code></pre>
+<h3 id="74-压缩能力">7.4 压缩能力</h3>
+<p>MyISAM 支持<strong>静态压缩表</strong>，压缩比很高，适合归档历史数据；但压缩后的表是只读的，不能修改。</p>
+<h2 id="八到底该选谁">八、到底该选谁</h2>
+<p>建表时的选择结论很直接：在当前技术环境下，<strong>只要有一丁点不确定，就选 InnoDB</strong>——这是经过无数 Java 后端项目验证过的生存法则。</p>
+<blockquote>
+<p><strong>阿里巴巴 Java 开发手册</strong>明确规定：所有表必须使用 InnoDB 存储引擎，除非有特殊需求（如高压缩比历史归档）才考虑 MyISAM。这条强制规范背后是大量线上事故换来的教训。</p>
+</blockquote>
+<h2 id="九面试口语回答模板">九、面试口语回答模板</h2>
+<p>下面是可直接套用的 1~2 分钟口语回答：</p>
+<blockquote>
+<p>InnoDB 和 MyISAM 是 MySQL 的两大存储引擎，主要有四个维度的区别：</p>
+<p><strong>第一是事务</strong>。InnoDB 支持事务和 ACID，MyISAM 不支持。所以转账、订单这类需要数据一致性的场景必须用 InnoDB。</p>
+<p><strong>第二是锁的粒度</strong>。InnoDB 支持行级锁，只有更新同一行才冲突，并发能力强；MyISAM 只有表级锁，写操作锁住整张表，并发差很多。</p>
+<p><strong>第三是索引结构</strong>。InnoDB 是聚簇索引，主键索引叶子节点直接存完整数据，辅助索引存主键值，需要回表；MyISAM 是非聚簇索引，叶子节点存数据文件物理地址，主键和辅助索引结构一样。</p>
+<p><strong>第四是崩溃恢复</strong>。InnoDB 有 redo log 和 undo log，崩溃后能自动恢复；MyISAM 没有日志，崩了得手动修复，还不一定能完全恢复。</p>
+<p>从 MySQL 5.5 起 InnoDB 就是默认引擎，实际项目中除非是只读归档日志表，否则基本都选 InnoDB，我们项目一直用的也是 InnoDB。</p>
+</blockquote>
+<h2 id="十小结">十、小结</h2>
+<p>InnoDB 是现代 Java 应用的首选存储引擎，MyISAM 是老一辈的轻量级选手。两者最大区别集中在<strong>事务、锁粒度、索引结构、崩溃恢复</strong>四点。</p>
+<p>三句最关键的认知：</p>
+<ol>
+<li><strong>事务是第一分界线</strong>：涉及钱、订单、库存的一致性业务，必须 InnoDB；</li>
+<li><strong>并发看锁粒度</strong>：InnoDB 行锁精确到行，但行锁必须走索引，否则退化为表锁；</li>
+<li><strong>结构决定性能</strong>：聚簇索引主键即数据、辅助索引回表；MyISAM 索引与数据分家、靠物理地址取数。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳；引擎选型与压缩归档方案需结合实际业务一致性要求与数据生命周期评估。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>InnoDB 与 MyISAM 存储引擎区别：事务、锁、索引结构、崩溃恢复</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/mysql-6-engine-compare/">https://zhanzhenguan.github.io/blog/mysql-6-engine-compare/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-1-basics/">MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</a> <p>整理 Java 开发视角的 MySQL 基础认知：知识体系图谱、Server 层与存储引擎层分层架构、一条 SELECT 的连接器/分析器/优化器/执行器流程、MySQL 8.0 移除查询缓存、UPDATE 涉及的 Buffer Pool 与 undo/redo/binlog 日志链路、InnoDB 与 MyISAM 在事务/行锁/外键/崩溃恢复/MVCC/聚簇索引/COUNT(*) 上的差异，以及生产环境为何默认选 InnoDB。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-9-locks/">MySQL 六种锁：表锁/MDL/意向锁、记录锁/间隙锁/临键锁与死锁排查</a> <p>系统梳理 InnoDB 并发控制中的六类锁：全局/表级/行级三层粒度；InnoDB 行锁加在索引记录上而非数据行；全局读锁与备份锁、LOCK TABLES、元数据锁 MDL（SHARED_READ/WRITE/EXCLUSIVE、事务持有到提交、长事务堵 DDL）、意向锁 IS/IX 的标记作用与兼容性；记录锁、间隙锁、临键锁（左开右闭）的加锁规则速查表；没走索引的 UPDATE 退化为扫描全表封锁、二级索引同时锁二级与主键、RC semi-consistent read；间隙锁 + 插入意向锁死锁闭环、死锁检测与超时参数、SHOW ENGINE INNODB STATUS 定位、固定加锁顺序与业务层重试；线上查锁四条命令与开发检查清单。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-2-index/">MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</a> <p>整理 MySQL 索引原理与优化：索引作为有序数据结构减少磁盘 I/O；B+Tree 非叶子节点只存键、叶子节点双向链表相连的结构与四个核心优势、千万级表 2-3 层树高的 I/O 估算；聚簇索引叶子存整行、二级索引叶子存主键值；回表与覆盖索引；联合索引最左前缀原则与索引下推（MySQL 5.6+）；EXPLAIN 的 type/Extra/key/rows 判读；深分页延迟关联、JOIN 小表驱动大表、ORDER BY 索引排序、建索引六要六不要与 COUNT 优化。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/minio-basics/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">MinIO 入门：对象存储概念、优缺点、核心组件与 Docker / 本地二进制部署</div> </a> <a class="next" href="/blog/mysql-7-slow-sql/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">慢 SQL 优化实战：定位排查、EXPLAIN 诊断、索引失效与 SQL 改写</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"InnoDB 与 MyISAM 存储引擎区别：事务、锁、索引结构、崩溃恢复","description":"系统对比 MySQL 两大存储引擎：存储引擎的职责定位；InnoDB 与 MyISAM 在事务 ACID、锁粒度（行锁/表锁）、外键、MVCC、崩溃恢复、聚簇/非聚簇索引、数据存储文件、全文索引、COUNT(*)、压缩能力上的差异；行锁为何必须走索引；聚簇索引主键叶子存整行、辅助索引存主键值并回表；MyISAM 崩溃后的手动修复手段；COUNT(*) 与全文索引差异；MySQL 5.5 起默认 InnoDB、阿里开发手册强制规范；附面试口语回答模板。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/mysql-6-engine-compare/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

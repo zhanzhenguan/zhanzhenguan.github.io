@@ -1,0 +1,284 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 整合 Redis 的要点：依赖与 Lettuce/Jedis 客户端切换、单机/集群/连接池配置、RedisTemplate 五种数据结构操作、核心操作接口、缓存抽象、Lua 脚本滑动窗口限流，以及序列化器选型与自动配置类。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化"><meta property="og:description" content="整理 Spring Boot 整合 Redis 的要点：依赖与 Lettuce/Jedis 客户端切换、单机/集群/连接池配置、RedisTemplate 五种数据结构操作、核心操作接口、缓存抽象、Lua 脚本滑动窗口限流，以及序列化器选型与自动配置类。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-redis/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 6 分钟</span> <span>· 2069 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/redis/">#Redis</a><a class="tag" href="/tags/e80c310e/">#缓存</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li class="current">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化（本文）</li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第七部分，整合 Redis：从依赖与客户端选择、连接配置讲起，到 <code>RedisTemplate</code> 的数据结构操作、缓存抽象、Lua 脚本限流，最后梳理序列化器选型与自动配置原理。代码为通用示例，连接信息用占位符。</p>
+<h2 id="一引入依赖与客户端选择">一、引入依赖与客户端选择</h2>
+<p>引入官方启动器即可：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-data-redis&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<p>该 Starter 内部包含 <code>spring-data-redis</code> 与 <code>lettuce-core</code> 两个核心包，因此 <strong>Spring Boot 默认使用 Lettuce 客户端</strong>。想换成 Jedis，需要排除 Lettuce 依赖，再引入 Jedis 客户端与连接池实现。</p>
+<h3 id="自动配置原理">自动配置原理</h3>
+<p>Spring Boot 预设的自动配置类都在 <code>spring-boot-autoconfigure</code> 包中，Redis 对应的是 <code>RedisAutoConfiguration</code>。它内部引入 <code>LettuceConnectionConfiguration</code> 与 <code>JedisConnectionConfiguration</code> 两个配置类，分别对应两个客户端；两者都用条件注解判断 classpath 中是否存在对应客户端类。项目引入了 <code>lettuce-core</code> 而没有 Jedis 依赖时，Lettuce 配置条件成立被加载，Jedis 配置不成立不加载，于是默认生效 Lettuce。</p>
+<p><img src="/blog/spring-boot-redis/spring-boot-redis-01.png" alt="Redis 客户端条件装配流程"></p>
+<h2 id="二连接配置">二、连接配置</h2>
+<blockquote>
+<p>版本前缀：Spring Boot 2.x 使用 <code>spring.redis.*</code>；3.x 迁移到 <code>spring.data.redis.*</code>。下面示例按 2.x 前缀书写。</p>
+</blockquote>
+<h3 id="21-单机配置">2.1 单机配置</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  redis</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    host</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">localhost</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    port</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">6379</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    database</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">0</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${REDIS_PASSWORD:change-me}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    timeout</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">2000ms</span></span></code></pre>
+<p>Redis 6.0+ 支持用户名，可通过 <code>username</code> 配置。</p>
+<h3 id="22-集群配置">2.2 集群配置</h3>
+<p>集群模式下配置节点列表与重定向次数：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  redis</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    cluster</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      nodes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">host1:6379,host2:6379,host3:6379</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      max-redirects</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">3</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${REDIS_PASSWORD:change-me}</span></span></code></pre>
+<h3 id="23-连接池配置">2.3 连接池配置</h3>
+<p>客户端是 Lettuce 时，连接池配置挂在 <code>spring.redis.lettuce.pool</code> 下；用 Jedis 则换成 <code>spring.redis.jedis.pool</code>。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  redis</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    lettuce</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      pool</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        max-active</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">8</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        max-idle</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">8</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        min-idle</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">0</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        max-wait</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">-1ms</span></span></code></pre>
+<blockquote>
+<p>关键点：仅在配置文件写连接池参数<strong>不会生效</strong>，还必须引入连接池依赖 <code>commons-pool2</code>；导入前后观察 <code>RedisTemplate</code> 底层连接池对象是否有值可以验证。</p>
+</blockquote>
+<h2 id="三redistemplate-与五种数据结构">三、RedisTemplate 与五种数据结构</h2>
+<p>操作 Redis 主要使用 Spring Data Redis 提供的 <code>RedisTemplate</code>；纯字符串场景用特化的 <code>StringRedisTemplate</code>。<code>RedisTemplate</code> 封装了连接管理、序列化与异常处理，通过不同的 <code>opsForXxx()</code> 方法操作五种数据结构：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>数据结构</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>opsForValue()</code></td>
+<td>String 字符串</td>
+</tr>
+<tr>
+<td><code>opsForList()</code></td>
+<td>List 列表</td>
+</tr>
+<tr>
+<td><code>opsForSet()</code></td>
+<td>Set 集合</td>
+</tr>
+<tr>
+<td><code>opsForZSet()</code></td>
+<td>ZSet 有序集合</td>
+</tr>
+<tr>
+<td><code>opsForHash()</code></td>
+<td>Hash 哈希</td>
+</tr>
+</tbody>
+</table>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Service</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RedisService</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> StringRedisTemplate stringRedisTemplate;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RedisService</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(StringRedisTemplate </span><span style="color:#E36209;--shiki-dark:#FFAB70">stringRedisTemplate</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#005CC5;--shiki-dark:#79B8FF">        this</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.stringRedisTemplate </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> stringRedisTemplate;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> setValue</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">key</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, String </span><span style="color:#E36209;--shiki-dark:#FFAB70">value</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        stringRedisTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">opsForValue</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">set</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(key, value, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">30</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, TimeUnit.MINUTES);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String </span><span style="color:#6F42C1;--shiki-dark:#B392F0">getValue</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">key</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> stringRedisTemplate.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">opsForValue</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">get</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(key);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>其他常用方法：<code>hasKey(key)</code> 判断键是否存在、<code>keys(pattern)</code> 按模式查键、<code>getExpire(key)</code> 获取剩余过期时间（秒，未设置过期返回 -1）、<code>boundValueOps(key)</code> 绑定指定键。</p>
+<p><img src="/blog/spring-boot-redis/spring-boot-redis-02.png" alt="RedisTemplate 与五种数据结构"></p>
+<h2 id="四核心操作接口">四、核心操作接口</h2>
+<h3 id="41-redisoperations">4.1 RedisOperations</h3>
+<p><code>RedisOperations</code> 是定义 Redis 操作的核心接口，提供模板化编程模型：开发者无需关心连接管理与异常处理，即可操作 String、Hash、List、Set、ZSet 等结构；支持事务与 Pipeline 批量操作，并通过泛型保证 Key/Value 类型安全。<code>RedisTemplate</code> 是它的主要实现。</p>
+<h3 id="42-valueoperations">4.2 ValueOperations</h3>
+<p>面向 String 简单键值对的操作接口，常用方法：</p>
+<ul>
+<li><code>get(key)</code>：取值，键不存在返回 <code>null</code>；</li>
+<li><code>set(key, value)</code> / <code>set(key, value, timeout, unit)</code>：写入，可带过期时间；</li>
+<li><code>getAndDelete(key)</code>：返回值并删除键；</li>
+<li><code>increment(key, delta)</code>：整数自增（delta 可正可负），键不存在则初始化为 delta；适合计数器、统计、限流；</li>
+<li><code>decrement(key)</code>：递减；</li>
+<li><code>multiGet(keys)</code>：批量取值；</li>
+<li><code>getAndSet(key, value)</code>：取旧值并写入新值。</li>
+</ul>
+<h3 id="43-boundvalueoperations">4.3 BoundValueOperations</h3>
+<p>把操作绑定到某个固定 Key，后续调用无需反复传键名，支持链式调用，简化同一键的多次 <code>set/get/append</code> 操作。通过 <code>redisTemplate.boundValueOps(key)</code> 获取实例，适合计数器、对象缓存、动态开关等场景。</p>
+<h3 id="44-rediscallback">4.4 RedisCallback</h3>
+<p><code>RedisCallback</code> 是底层回调接口，核心方法 <code>doInRedis(RedisConnection connection)</code>：在回调中直接拿到 <code>RedisConnection</code>，执行 <code>RedisTemplate</code> 高级方法未覆盖的复杂命令、事务或流水线。由 <code>RedisTemplate.execute()</code> 传入并在连接上执行，用于细粒度控制连接与批量操作。</p>
+<h2 id="五缓存抽象">五、缓存抽象</h2>
+<h3 id="51-rediscachemanager">5.1 RedisCacheManager</h3>
+<p><code>RedisCacheManager</code> 实现 Spring 的 <code>CacheManager</code> 接口，负责把缓存数据存入 Redis，并管理缓存的创建与配置。可通过 <code>RedisCacheManager.create(connectionFactory)</code> 或 <code>builder(connectionFactory)</code> 构建；支持默认配置、全局统一配置、按缓存名独立配置，可启用事务支持与统计，未显式配置的缓存会按默认配置动态创建。</p>
+<h3 id="52-rediscacheconfiguration">5.2 RedisCacheConfiguration</h3>
+<p><code>RedisCacheConfiguration</code> 是配置缓存行为的不可变配置类，采用建造者模式链式设置：</p>
+<ul>
+<li><code>defaultCacheConfig()</code>：获取默认配置；</li>
+<li><code>entryTtl(Duration)</code>：固定过期时间，也可换用 TTL 函数做动态过期（3.2+）；</li>
+<li><code>disableCachingNullValues()</code>：禁止缓存 <code>null</code>；</li>
+<li><code>disableKeyPrefix()</code>：禁用 Key 前缀；</li>
+<li><code>enableTimeToIdle()</code>：启用空闲时间过期（TTI）。</li>
+</ul>
+<h2 id="六lua-脚本与限流">六、Lua 脚本与限流</h2>
+<h3 id="61-限流算法选择">6.1 限流算法选择</h3>
+<ul>
+<li><strong>固定窗口计数器</strong>：简单，但有窗口边界突刺问题；</li>
+<li><strong>滑动窗口计数器</strong>：结果平滑，内存占用较高；</li>
+<li><strong>令牌桶算法</strong>：允许一定突发流量；</li>
+<li><strong>漏桶算法</strong>：流量整形，输出平滑。</li>
+</ul>
+<p>滑动窗口兼顾平滑与实现成本，是常见的接口限流方案。</p>
+<h3 id="62-架构与原理">6.2 架构与原理</h3>
+<p>Redis 存储限流数据并利用原子性，Lua 脚本保证限流逻辑原子执行，Spring Boot 通过 AOP 注解方式接入。用 ZSet 存储每个请求的时间戳，Lua 脚本在一次执行内完成：移除过期记录 → 统计窗口内请求数 → 判断是否超限 → 写入新请求记录。</p>
+<p><img src="/blog/spring-boot-redis/spring-boot-redis-03.png" alt="Lua 滑动窗口限流流程"></p>
+<h3 id="63-脚本执行defaultredisscript">6.3 脚本执行：DefaultRedisScript</h3>
+<p><code>DefaultRedisScript</code> 实现 <code>RedisScript</code> 接口，封装 Lua 脚本执行：<code>scriptText</code>/<code>scriptSource</code> 存放脚本内容或资源，<code>sha1</code> 用于脚本缓存，<code>resultType</code> 指定返回类型。可直接传入脚本文本，也可从 <code>resources/lua/</code> 下加载脚本文件。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> DefaultRedisScript</span><span style="color:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="color:#24292E;--shiki-dark:#E1E4E8">Long</span><span style="color:#D73A49;--shiki-dark:#F97583">></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> rateLimitScript</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    DefaultRedisScript&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">Long</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> script </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> DefaultRedisScript&#x3C;>();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    script.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setScriptSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ResourceScriptSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ClassPathResource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"lua/rate_limit.lua"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    script.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setResultType</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Long.class);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> script;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>典型落地步骤：定义限流注解与类型枚举、限流异常类、脚本管理、Lua 脚本文件、工具类、AOP 切面、全局异常处理、Redis 配置与 Controller 示例。优点是原子性、高性能、策略灵活、注解易用、便于扩展；注意事务中切换与分布式场景的边界。</p>
+<h2 id="七序列化机制与选型">七、序列化机制与选型</h2>
+<p>存入 Redis 的对象以什么格式存储，由序列化器决定。<code>RedisSerializer</code> 接口定义 <code>serialize(T)</code> 与 <code>deserialize(byte[])</code> 两个方法，负责 Java 对象与存储字节之间的转换。</p>
+<h3 id="71-默认行为">7.1 默认行为</h3>
+<ul>
+<li>存 String 时默认使用 <code>StringRedisSerializer</code>；</li>
+<li>存对象时 <code>RedisTemplate</code> 默认使用 <code>JdkSerializationRedisSerializer</code>（JDK 原生二进制序列化），结果不可读、排查困难，且对象必须实现 <code>Serializable</code>。</li>
+</ul>
+<h3 id="72-常见序列化器对比">7.2 常见序列化器对比</h3>
+<table>
+<thead>
+<tr>
+<th>序列化器</th>
+<th>特点</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>StringRedisSerializer</code></td>
+<td>轻量高效，仅支持字符串，UTF-8 编码</td>
+<td>Key/Value 都是字符串；非字符串对象会抛 <code>ClassCastException</code></td>
+</tr>
+<tr>
+<td><code>JdkSerializationRedisSerializer</code></td>
+<td>JDK 原生二进制，保持完整类型信息，不可读、体积较大</td>
+<td>纯 Java 内部系统、复杂对象缓存</td>
+</tr>
+<tr>
+<td><code>Jackson2JsonRedisSerializer</code></td>
+<td>Jackson 转 JSON，可读、跨语言；<strong>不带类型信息</strong>，反序列化需明确目标类型，结果更小</td>
+<td>缓存固定类型对象（如 User、Order）</td>
+</tr>
+<tr>
+<td><code>GenericJackson2JsonRedisSerializer</code></td>
+<td>JSON 中携带类型信息，反序列化可恢复原始类型，支持泛型与复杂对象</td>
+<td>通用缓存服务，缓存多种类型对象</td>
+</tr>
+<tr>
+<td><code>GenericToStringSerializer</code></td>
+<td>任意对象转字符串，支持自定义转换逻辑，可读性好</td>
+<td>自定义格式、跨语言读取</td>
+</tr>
+<tr>
+<td><code>ProtoBufRedisSerializer</code></td>
+<td>Protobuf 紧凑二进制，高性能低带宽</td>
+<td>高吞吐、带宽敏感场景</td>
+</tr>
+</tbody>
+</table>
+<h3 id="73-自定义-json-序列化配置">7.3 自定义 JSON 序列化配置</h3>
+<p>通常自建 <code>RedisTemplate</code> Bean，Key 用字符串序列化器，Value 用 JSON 序列化器：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RedisConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RedisTemplate&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">redisTemplate</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(RedisConnectionFactory </span><span style="color:#E36209;--shiki-dark:#FFAB70">factory</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        RedisTemplate&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> template </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> RedisTemplate&#x3C;>();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        template.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setConnectionFactory</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(factory);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        Jackson2JsonRedisSerializer&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> serializer </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">                new</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Jackson2JsonRedisSerializer&#x3C;>(Object.class);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        template.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setKeySerializer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> StringRedisSerializer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        template.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setValueSerializer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(serializer);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        template.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHashKeySerializer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> StringRedisSerializer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        template.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHashValueSerializer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(serializer);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> template;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<blockquote>
+<p>选型要点：固定类型、追求体积用 <code>Jackson2JsonRedisSerializer</code>；多类型通用缓存、需要自动恢复类型用 <code>GenericJackson2JsonRedisSerializer</code>；生产环境注意限制反序列化类型范围，避免安全问题。</p>
+</blockquote>
+<p><img src="/blog/spring-boot-redis/spring-boot-redis-04.png" alt="对象序列化到 Redis 的流转"></p>
+<h2 id="八自动配置类与配置属性">八、自动配置类与配置属性</h2>
+<h3 id="81-redisautoconfiguration">8.1 RedisAutoConfiguration</h3>
+<p>Redis 自动配置核心类，关键注解：</p>
+<ul>
+<li><code>@Configuration(proxyBeanMethods = false)</code>；</li>
+<li><code>@ConditionalOnClass(RedisOperations.class)</code>：classpath 存在 Redis 操作类时才装配；</li>
+<li><code>@EnableConfigurationProperties(RedisProperties.class)</code>：绑定配置属性；</li>
+<li><code>@Import({LettuceConnectionConfiguration.class, JedisConnectionConfiguration.class})</code>：导入两个客户端连接配置。</li>
+</ul>
+<h3 id="82-redisproperties">8.2 RedisProperties</h3>
+<p><code>@ConfigurationProperties</code> 配置属性类，2.x 前缀 <code>spring.redis</code>，主要分组：</p>
+<table>
+<thead>
+<tr>
+<th>分组</th>
+<th>主要属性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>基础连接</td>
+<td><code>host</code>（默认 localhost）、<code>port</code>（默认 6379）、<code>password</code>、<code>database</code>（默认 0）、<code>url</code></td>
+</tr>
+<tr>
+<td>连接池 Pool</td>
+<td><code>max-active</code>（默认 8）、<code>max-idle</code>（默认 8）、<code>min-idle</code>（默认 0）、<code>max-wait</code>（默认 -1 无限等待）</td>
+</tr>
+<tr>
+<td>集群 Cluster</td>
+<td><code>nodes</code>（host:port 列表）、<code>max-redirects</code></td>
+</tr>
+<tr>
+<td>哨兵 Sentinel</td>
+<td><code>master</code>、<code>nodes</code>、<code>password</code></td>
+</tr>
+<tr>
+<td>超时/SSL</td>
+<td><code>timeout</code>、<code>connect-timeout</code>、<code>read-timeout</code>、<code>ssl</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="九小结">九、小结</h2>
+<ul>
+<li>引入 <code>spring-boot-starter-data-redis</code>，默认 Lettuce 客户端；切换 Jedis 需更换依赖，由条件注解决定加载哪个连接配置；</li>
+<li>单机、集群、哨兵在 <code>spring.redis</code>（3.x 为 <code>spring.data.redis</code>）下配置；Lettuce 连接池挂 <code>lettuce.pool</code>，且必须引入 <code>commons-pool2</code> 才生效；</li>
+<li><code>RedisTemplate</code> 通过 <code>opsForValue/List/Set/ZSet/Hash</code> 操作五种结构，<code>StringRedisTemplate</code> 专做字符串；底层有 <code>RedisOperations</code>、<code>ValueOperations</code>、<code>BoundValueOperations</code>、<code>RedisCallback</code> 等接口分层；</li>
+<li>缓存用 <code>RedisCacheManager</code> + <code>RedisCacheConfiguration</code> 管理过期、序列化与 Key 前缀；Lua 脚本配合 ZSet 可实现原子的滑动窗口限流；</li>
+<li>序列化默认对象走 JDK 二进制不可读，生产常用 JSON 序列化器，按是否需要保留类型信息在 <code>Jackson2Json</code> 与 <code>GenericJackson2Json</code> 间选择。</li>
+</ul>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏，示例中的账号、地址、密码均为占位符。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-redis/">https://zhanzhenguan.github.io/blog/spring-boot-redis/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a> <p>整理 Spring Boot 整合 Redisson 的要点：Redisson 定位与核心功能、依赖与配置类（单机/集群/哨兵）、RedissonClient 核心入口、RBucket 分布式对象、Redisson 工厂与 Config 配置，以及可重入锁与看门狗续期机制。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-rabbitmq/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</div> </a> <a class="next" href="/blog/spring-boot-redisson/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化","description":"整理 Spring Boot 整合 Redis 的要点：依赖与 Lettuce/Jedis 客户端切换、单机/集群/连接池配置、RedisTemplate 五种数据结构操作、核心操作接口、缓存抽象、Lua 脚本滑动窗口限流，以及序列化器选型与自动配置类。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-redis/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

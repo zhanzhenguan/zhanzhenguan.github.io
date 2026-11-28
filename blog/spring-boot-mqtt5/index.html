@@ -1,0 +1,574 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot 3 接入 MQTT 5 的要点：版本基线与 Paho v5 显式依赖、发布订阅模型与 Topic 通配符、QoS 等级、Retained 保留消息与 LWT 遗嘱消息、Mosquitto Broker 准备与 log_dest 踩坑、Mqttv5ClientManager 共享连接、入站/出站 IntegrationFlow、@Qualifier 注入歧义、非法参数 500 修复、cleanStart 与会话可靠性、认证 ACL/TLS 生产化与 MQTT 同 Kafka/Redis/DB 的分工。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环"><meta property="og:description" content="整理 Spring Boot 3 接入 MQTT 5 的要点：版本基线与 Paho v5 显式依赖、发布订阅模型与 Topic 通配符、QoS 等级、Retained 保留消息与 LWT 遗嘱消息、Mosquitto Broker 准备与 log_dest 踩坑、Mqttv5ClientManager 共享连接、入站/出站 IntegrationFlow、@Qualifier 注入歧义、非法参数 500 修复、cleanStart 与会话可靠性、认证 ACL/TLS 生产化与 MQTT 同 Kafka/Redis/DB 的分工。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-mqtt5/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 11 分钟</span> <span>· 3400 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/mqtt/">#MQTT</a><a class="tag" href="/tags/3d13e1c0/">#物联网</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li class="current">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环（本文）</li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第十九部分，在 JDK 17 + Spring Boot 3.5.16 环境中接入 MQTT 5：起 Mosquitto Broker、配置共享连接、订阅设备遥测、用 REST 下发指令、验证保留消息与遗嘱消息，并修复实测暴露的参数校验与日志编码问题。技术栈：Spring Boot 3.5.16、JDK 17、Spring Integration 6.5.10、Eclipse Paho MQTT v5 Client 1.2.5、Mosquitto 2.1.4。代码为通用示例，Broker 地址、账号密码按实际环境调整并做好脱敏。</p>
+<h2 id="一版本基线">一、版本基线</h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>版本</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JDK</td>
+<td>17</td>
+<td>Spring Boot 3.x 最低要求</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>3.5.16</td>
+<td>3.5 系列维护版本，依赖统一交给 BOM</td>
+</tr>
+<tr>
+<td>Spring Integration</td>
+<td>6.5.10</td>
+<td>随 Boot 3.5.16 引入，<code>spring-integration-mqtt</code> 不用手写版本</td>
+</tr>
+<tr>
+<td>Eclipse Paho MQTT v5 Client</td>
+<td>1.2.5</td>
+<td><strong>必须显式声明</strong>，它是 Spring Integration 的可选依赖</td>
+</tr>
+<tr>
+<td>Eclipse Mosquitto</td>
+<td>2.1.4</td>
+<td>本机 MQTT Broker，监听 1883</td>
+</tr>
+<tr>
+<td>Maven</td>
+<td>3.9.3</td>
+<td>3.6.3+ 均可</td>
+</tr>
+</tbody>
+</table>
+<p>两条版本原则：</p>
+<ol>
+<li><strong>Spring Integration 的版本交给 Spring Boot 管</strong>。Boot 3.5.16 的依赖清单锁定的就是 6.5.10，自己在 pom 里写版本号反而容易和 BOM 混搭出不兼容组合。</li>
+<li><strong>MQTT v5 客户端一定显式引入</strong>。<code>spring-integration-mqtt</code> 只把 Paho v5 当可选依赖，不会自动传递；漏了它，编译期就会报「MQTT v5 类找不到」。</li>
+</ol>
+<h2 id="二mqtt-核心概念速览">二、MQTT 核心概念速览</h2>
+<h3 id="21-发布订阅模型">2.1 发布/订阅模型</h3>
+<p>MQTT 是为弱网、低带宽、嵌入式设备设计的轻量消息协议。它不像 HTTP 那样「请求一次、响应一次」，而是所有客户端都连到 <strong>Broker</strong>，通过 <strong>Topic（主题）</strong> 解耦：发布者把消息发给某个 Topic，订阅者提前订阅感兴趣的 Topic，双方不需要知道对方的地址。</p>
+<table>
+<thead>
+<tr>
+<th>对比项</th>
+<th>HTTP</th>
+<th>MQTT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>通信模型</td>
+<td>请求 / 响应</td>
+<td>发布 / 订阅</td>
+</tr>
+<tr>
+<td>双方耦合</td>
+<td>调用方要知道对方地址</td>
+<td>双方只认 Broker 与 Topic</td>
+</tr>
+<tr>
+<td>连接开销</td>
+<td>每次请求可新建连接</td>
+<td>长连接 + 心跳保持</td>
+</tr>
+<tr>
+<td>典型场景</td>
+<td>Web API、页面交互</td>
+<td>设备遥测、实时下发、物联网</td>
+</tr>
+</tbody>
+</table>
+<p><img src="/blog/spring-boot-mqtt5/spring-boot-mqtt5-01.png" alt="MQTT 发布订阅模型"></p>
+<h3 id="22-topic-与通配符">2.2 Topic 与通配符</h3>
+<p>Topic 是斜杠分隔的层级字符串，大小写敏感，例如 <code>demo/device/001/telemetry</code>。订阅时可以用通配符，<strong>发布时必须是精确主题</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>符号</th>
+<th>含义</th>
+<th>示例</th>
+<th>匹配</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>+</code></td>
+<td>单层</td>
+<td><code>demo/device/+/telemetry</code></td>
+<td><code>demo/device/001/telemetry</code></td>
+</tr>
+<tr>
+<td><code>#</code></td>
+<td>多层（须在末尾）</td>
+<td><code>demo/device/#</code></td>
+<td><code>demo/device/001/telemetry</code>、<code>demo/device/a/b</code></td>
+</tr>
+</tbody>
+</table>
+<p>本项目订阅 <code>demo/device/+/telemetry</code>，用一层通配覆盖所有设备；发布接口里专门做了校验，Topic 含 <code>+</code> 或 <code>#</code> 直接拒绝。</p>
+<h3 id="23-qos-三个等级">2.3 QoS 三个等级</h3>
+<table>
+<thead>
+<tr>
+<th>QoS</th>
+<th>语义</th>
+<th>代价</th>
+<th>适用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>至多一次，发完不管</td>
+<td>最低</td>
+<td>高频遥测、允许丢点</td>
+</tr>
+<tr>
+<td>1</td>
+<td>至少一次，可能重复</td>
+<td>中等</td>
+<td>通用业务消息</td>
+</tr>
+<tr>
+<td>2</td>
+<td>恰好一次</td>
+<td>四次握手，最重</td>
+<td>计费、关键指令</td>
+</tr>
+</tbody>
+</table>
+<p>本项目默认 <code>qos=1</code>。<strong>QoS 1 不保证不重复</strong>，去重必须在业务层用 <code>messageId</code> 做。</p>
+<h3 id="24-保留消息与遗嘱消息">2.4 保留消息与遗嘱消息</h3>
+<ul>
+<li><strong>保留消息（Retained）</strong>：Broker 为每个 Topic 保存最近一条 retained 消息，新订阅者一上线就能立刻拿到最新状态，不用等设备下次上报。</li>
+<li><strong>遗嘱消息（LWT）</strong>：客户端连接时预先登记一条「遗言」，当它<strong>异常断开</strong>（网络断、进程被杀）时由 Broker 代发；正常 DISCONNECT 不触发。</li>
+</ul>
+<p>两者配合就是最轻量的在线状态方案：本项目登记遗嘱 <code>demo/server/status = offline</code>，订阅成功后主动发一条 retained 的 <code>online</code>。</p>
+<h3 id="25-mqtt-5-相比-311-的增强">2.5 MQTT 5 相比 3.1.1 的增强</h3>
+<p>常用增强有：原因码与更清晰的错误反馈、会话过期间隔（Session Expiry）、共享订阅 <code>$share</code>、消息过期、用户属性、Topic 别名等。Spring Integration 对 v5 提供了独立的 <code>Mqttv5ClientManager</code> 与 <code>Mqttv5Paho*</code> 适配器，<strong>不要把 v3 的转换器套到 v5 适配器上</strong>。</p>
+<h2 id="三准备-brokermosquitto-214">三、准备 Broker：Mosquitto 2.1.4</h2>
+<h3 id="31-docker-compose-方案">3.1 Docker Compose 方案</h3>
+<p>有 Docker 的机器最省事，<code>broker/docker-compose.yml</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">services</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  mosquitto</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    image</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">eclipse-mosquitto:2.1.4</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    container_name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">mosquitto</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    ports</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      - </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"1883:1883"</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    volumes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      - </span><span style="color:#032F62;--shiki-dark:#9ECBFF">./mosquitto.conf:/mosquitto/config/mosquitto.conf</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      - </span><span style="color:#032F62;--shiki-dark:#9ECBFF">mosquitto-data:/mosquitto/data</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      - </span><span style="color:#032F62;--shiki-dark:#9ECBFF">mosquitto-log:/mosquitto/log</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    restart</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">unless-stopped</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">volumes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  mosquitto-data</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  mosquitto-log</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span></code></pre>
+<p>对应 <code>broker/mosquitto.conf</code>（容器用，开持久化）：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="plaintext"><code><span class="line"><span>listener 1883</span></span>
+<span class="line"><span>allow_anonymous true</span></span>
+<span class="line"><span>persistence true</span></span>
+<span class="line"><span>persistence_location /mosquitto/data/</span></span>
+<span class="line"><span>log_dest stdout</span></span></code></pre>
+<h3 id="32-本机命令行方案">3.2 本机命令行方案</h3>
+<p>本机没有 Docker 时，可用官方 Windows 版程序文件命令行启动，<strong>不需要注册 Windows 服务</strong>，效果与容器一致。<code>broker/mosquitto-windows.conf</code> 同样配置 <code>listener 1883</code>、<code>allow_anonymous true</code>、<code>log_dest stdout</code>。</p>
+<blockquote>
+<p><code>allow_anonymous true</code> 仅限本机隔离学习环境，切勿把这样的 Broker 暴露到公网。</p>
+</blockquote>
+<h3 id="33-踩坑log_dest-没有-console">3.3 踩坑：log_dest 没有 console</h3>
+<p>第一次启动时 Broker 秒退，退出码 3。Mosquitto 的 <code>log_dest</code> 合法取值只有 <code>stdout</code> / <code>stderr</code> / <code>syslog</code> / <code>topic</code> / <code>file &#x3C;path></code> / <code>none</code>，<strong>没有 <code>console</code></strong>。改成 <code>log_dest stdout</code> 后正常启动。这是配置文件解析阶段的错误，不会有任何网络连接日志，容易被误判成「端口不通」。</p>
+<h3 id="34-命令行往返自检">3.4 命令行往返自检</h3>
+<p>Broker 起来后先别急着写 Java，用 <code>mosquitto_pub</code> / <code>mosquitto_sub</code> 做一次往返自检，确认 Broker 本身没问题：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 终端 A：订阅</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mosquitto_sub</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -t</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "demo/selftest"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 终端 B：发一条保留消息</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mosquitto_pub</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -t</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "demo/selftest"</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -m</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "hello"</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -r</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D"># 测完清掉保留消息</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mosquitto_pub</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -t</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "demo/selftest"</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -n</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -r</span></span></code></pre>
+<p><code>-r</code> 是发一条保留消息，<code>mosquitto_sub</code> 一订阅就立刻收到，一次命令就能验证发布、订阅、保留三条链路；<code>-n</code> 表示空消息，用于清掉该 Topic 的 retained 消息。</p>
+<h2 id="四创建项目与依赖配置">四、创建项目与依赖配置</h2>
+<p>四个 starter 加一个显式依赖就够：<code>web</code> 提供 REST 调试入口，<code>integration</code> + <code>mqtt</code> 提供通道适配器，<code>validation</code> 做请求校验，Paho v5 提供真正的 MQTT 5 协议栈。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-web&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-integration&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.integration&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-integration-mqtt&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-validation&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    &#x3C;!-- Paho v5 是可选依赖，必须显式声明 --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.eclipse.paho&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.eclipse.paho.mqttv5.client&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>1.2.5&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">version</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependencies</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h2 id="五配置-mqtt-客户端参数">五、配置 MQTT 客户端参数</h2>
+<h3 id="51-applicationyml">5.1 application.yml</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">mqtt</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  broker</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">tcp://127.0.0.1:1883</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  client-id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">demo-app-001</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${MQTT_USERNAME:}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${MQTT_PASSWORD:}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  topic-telemetry</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">demo/device/+/telemetry</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  topic-status</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">demo/server/status</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  qos</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">1</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  clean-start</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  max-reconnect-delay</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#005CC5;--shiki-dark:#79B8FF">30</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">logging</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  charset</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    console</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">UTF-8</span></span></code></pre>
+<p>三个细节：</p>
+<ol>
+<li><strong>凭据用环境变量占位</strong>，本机匿名时为空，将来开启 Broker 认证不必改代码。</li>
+<li><strong>Client ID 必须全局唯一</strong>。MQTT Broker 限制同一个 Client ID 只能有一个活动连接，两个进程用同一个 ID 会互相踢下线。</li>
+<li><code>logging.charset.console: UTF-8</code> 是实测后补的。Windows 中文环境下 Logback 控制台编码跟随系统代码页，日志里的中文会变成乱码；显式指定 UTF-8 后 IDEA 里正常，CMD 下配合 <code>chcp 65001</code> 即可。</li>
+</ol>
+<h3 id="52-mqttproperties">5.2 MqttProperties</h3>
+<p>用 record 做构造器绑定，不用手写 getter/setter：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">ConfigurationProperties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">prefix</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "mqtt"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> record</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> MqttProperties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String broker,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String clientId,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String username,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String password,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String topicTelemetry,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String topicStatus,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">Min</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">0</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) @</span><span style="color:#D73A49;--shiki-dark:#F97583">Max</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">int</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> qos,</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> cleanStart,</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        int</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> maxReconnectDelay) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>配置类上加 <code>@EnableConfigurationProperties(MqttProperties.class)</code> 即可启用，QoS 直接在绑定阶段被约束在 0~2。</p>
+<h2 id="六用-spring-integration-接入-mqtt-5">六、用 Spring Integration 接入 MQTT 5</h2>
+<h3 id="61-先想清楚连接怎么管">6.1 先想清楚连接怎么管</h3>
+<p>最容易踩的坑是「入站适配器一个连接、出站适配器另一个连接，两个都用同一个 Client ID」。Broker 会把先连上的踢掉，于是日志里出现反复掉线重连。</p>
+<p>正确做法是让所有通道适配器共享一个 <code>ClientManager</code> 管理的连接：入站负责订阅、出站负责发布，底层是同一个 MQTT 客户端会话。</p>
+<p><img src="/blog/spring-boot-mqtt5/spring-boot-mqtt5-02.png" alt="共享 ClientManager 连接架构"></p>
+<h3 id="62-mqttconfig共享连接--遗嘱--自动重连">6.2 MqttConfig：共享连接 + 遗嘱 + 自动重连</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">EnableConfigurationProperties</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MqttProperties.class)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> MqttConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MqttProperties props;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Mqttv5ClientManager </span><span style="color:#6F42C1;--shiki-dark:#B392F0">mqttClientManager</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        MqttConnectionOptions options </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> MqttConnectionOptions</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        options.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setServerURIs</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">new</span><span style="color:#D73A49;--shiki-dark:#F97583"> String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">[]{props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">broker</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()});</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        options.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setClientId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">clientId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        options.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setAutomaticReconnect</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        options.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setMaxReconnectDelay</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">maxReconnectDelay</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        options.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setCleanStart</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cleanStart</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">!=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> null</span><span style="color:#D73A49;--shiki-dark:#F97583"> &#x26;&#x26;</span><span style="color:#D73A49;--shiki-dark:#F97583"> !</span><span style="color:#24292E;--shiki-dark:#E1E4E8">props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">isBlank</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            options.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setUserName</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">username</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            options.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setPassword</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">password</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">toCharArray</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // 遗嘱消息：异常断开时代发 offline</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        MqttMessage will </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> MqttMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"offline"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getBytes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(StandardCharsets.UTF_8));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        will.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setQos</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">qos</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        options.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setWill</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">topicStatus</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(), will);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Mqttv5ClientManager</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(options);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>automaticReconnect</code> 交给 Paho 按退避策略重连，<code>maxReconnectDelay</code> 限制最大等待。<code>cleanStart=true</code> 表示每次从干净会话开始，适合演示；生产要保留离线消息得改成固定 Client ID + <code>cleanStart=false</code> + Session Expiry + Broker 持久化。</p>
+<h3 id="63-入站订阅-integrationflow">6.3 入站订阅 IntegrationFlow</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> IntegrationFlow </span><span style="color:#6F42C1;--shiki-dark:#B392F0">mqttInboundFlow</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Mqttv5ClientManager manager,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                                       TelemetryService telemetryService) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    Mqttv5PahoMessageDrivenChannelAdapter adapter </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">            new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Mqttv5PahoMessageDrivenChannelAdapter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(manager, props.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">topicTelemetry</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    adapter.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setPayloadType</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">byte</span><span style="color:#24292E;--shiki-dark:#E1E4E8">[].class);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    adapter.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setManualAcks</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> IntegrationFlow.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">from</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(adapter)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">handle</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(message </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> telemetryService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">consume</span><span style="color:#24292E;--shiki-dark:#E1E4E8">((</span><span style="color:#D73A49;--shiki-dark:#F97583">byte</span><span style="color:#24292E;--shiki-dark:#E1E4E8">[]) message.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getPayload</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()))</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">get</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>payloadType</code> 设成 <code>byte[]</code>，把解码和 JSON 解析留给业务层，适配层不绑死数据格式。<code>setManualAcks(false)</code> 是协议层自动确认；关键业务如需「处理成功才确认」，再开手动 ACK。</p>
+<h3 id="64-出站发布-integrationflow">6.4 出站发布 IntegrationFlow</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MessageChannel </span><span style="color:#6F42C1;--shiki-dark:#B392F0">mqttOutboundChannel</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> DirectChannel</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> IntegrationFlow </span><span style="color:#6F42C1;--shiki-dark:#B392F0">mqttOutboundFlow</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Mqttv5ClientManager manager) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    Mqttv5PahoMessageHandler handler </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Mqttv5PahoMessageHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(manager);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> IntegrationFlow.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">from</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"mqttOutboundChannel"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">handle</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(handler)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">get</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>业务代码只往 <code>mqttOutboundChannel</code> 丢消息，Topic / QoS / Retained 放在消息头里，适配器负责真正发到 Broker。</p>
+<h3 id="65-核心类职责一览">6.5 核心类职责一览</h3>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MqttProperties</code></td>
+<td>绑定 Broker 地址、Client ID、Topic、QoS、连接参数</td>
+</tr>
+<tr>
+<td><code>Mqttv5ClientManager</code></td>
+<td>管理共享的 MQTT 5 客户端连接</td>
+</tr>
+<tr>
+<td><code>Mqttv5PahoMessageDrivenChannelAdapter</code></td>
+<td>订阅 Topic，把入站报文转成 Spring Message</td>
+</tr>
+<tr>
+<td><code>Mqttv5PahoMessageHandler</code></td>
+<td>把 Spring Message 发布到 MQTT Topic</td>
+</tr>
+<tr>
+<td><code>IntegrationFlow</code></td>
+<td>组织消息从入站通道到业务处理器、从出站通道到适配器的流转</td>
+</tr>
+</tbody>
+</table>
+<h2 id="七实现消息消费与发布">七、实现消息消费与发布</h2>
+<h3 id="71-消费服务">7.1 消费服务</h3>
+<p>重点是<strong>非法消息不能打断订阅链路</strong>：设备可能发纯文本、发半个 JSON，解析失败只告警返回，不能让异常一路抛回适配器。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Service</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Slf4j</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> TelemetryService</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ObjectMapper objectMapper;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> consume</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#D73A49;--shiki-dark:#F97583">byte</span><span style="color:#24292E;--shiki-dark:#E1E4E8">[] </span><span style="color:#E36209;--shiki-dark:#FFAB70">payload</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        String body </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(payload, StandardCharsets.UTF_8);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        try</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            JsonNode node </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> objectMapper.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">readTree</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(body);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">info</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"收到设备遥测：{}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, node);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        } </span><span style="color:#D73A49;--shiki-dark:#F97583">catch</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (Exception </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            log.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">warn</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"非法消息已跳过：{}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, body, e);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="72-发布请求-dto">7.2 发布请求 DTO</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> record</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> PublishRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">NotBlank</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String topic,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">NotBlank</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> String payload,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        @</span><span style="color:#D73A49;--shiki-dark:#F97583">Min</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">0</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) @</span><span style="color:#D73A49;--shiki-dark:#F97583">Max</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#005CC5;--shiki-dark:#79B8FF">2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) Integer qos,</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        boolean</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> retained) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="73-发布服务与注入歧义">7.3 发布服务与注入歧义</h3>
+<p><code>@Qualifier</code> 不是可选项。Spring Integration 启动时会自动注册 <code>errorChannel</code>、<code>nullChannel</code> 等多个 <code>MessageChannel</code> Bean，只按类型注入 <code>MessageChannel</code> 存在歧义风险；按名称精确指定才稳。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Service</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> CommandPublishService</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Qualifier</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"mqttOutboundChannel"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MessageChannel outboundChannel;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> publish</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(PublishRequest </span><span style="color:#E36209;--shiki-dark:#FFAB70">req</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        Message&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">byte</span><span style="color:#24292E;--shiki-dark:#E1E4E8">[]> message </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> MessageBuilder</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">withPayload</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(req.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">payload</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getBytes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(StandardCharsets.UTF_8))</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHeader</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MqttHeaders.TOPIC, req.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">topic</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHeader</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MqttHeaders.QOS, req.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">qos</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">==</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> null</span><span style="color:#D73A49;--shiki-dark:#F97583"> ?</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> :</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> req.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">qos</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setHeader</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(MqttHeaders.RETAINED, req.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">retained</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        outboundChannel.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">send</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(message);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="74-rest-接口">7.4 REST 接口</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RestController</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequestMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/mqtt"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RequiredArgsConstructor</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> MqttController</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> CommandPublishService publishService;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">PostMapping</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/publish"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">publish</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(@</span><span style="color:#D73A49;--shiki-dark:#F97583">Valid</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> @</span><span style="color:#D73A49;--shiki-dark:#F97583">RequestBody</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> PublishRequest </span><span style="color:#E36209;--shiki-dark:#FFAB70">req</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        publishService.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">publish</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(req);</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Map.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"success"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">true</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"topic"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, req.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">topic</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#032F62;--shiki-dark:#9ECBFF">                "qos"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, req.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">qos</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() </span><span style="color:#D73A49;--shiki-dark:#F97583">==</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> null</span><span style="color:#D73A49;--shiki-dark:#F97583"> ?</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="color:#D73A49;--shiki-dark:#F97583"> :</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> req.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">qos</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(), </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"retained"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, req.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">retained</span><span style="color:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>success=true</code> 只代表消息已提交到出站通道并由 Broker 确认，<strong>不代表设备已经执行</strong>。要业务级确认，得让设备处理后往 <code>response/ack</code> 主题回执，并跟踪 <code>requestId</code>。</p>
+<h3 id="75-实测缺陷非法-topic-返回-500">7.5 实测缺陷：非法 Topic 返回 500</h3>
+<p>第一轮参数测试：<code>qos=3</code> 正确返回 400，但 <code>topic=demo/+/bad</code> 返回了 <strong>HTTP 500</strong>。原因是 <code>IllegalArgumentException</code> 被 Servlet 容器当成未处理异常，直接落到 Boot 默认错误页。请求参数写错，不该报服务端内部错误，补一个全局异常处理器：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">RestControllerAdvice</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> GlobalExceptionHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">ExceptionHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(IllegalArgumentException.class)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity&#x3C;Map&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#D73A49;--shiki-dark:#F97583">Object</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">badRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(IllegalArgumentException </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ResponseEntity.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">badRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">body</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Map.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">of</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"success"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#005CC5;--shiki-dark:#79B8FF">false</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"message"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, e.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getMessage</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()));</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>修复后同样请求返回 400 与错误信息。发布接口的 Topic 校验：含 <code>+</code> 或 <code>#</code> 时抛 <code>IllegalArgumentException</code>，由上述处理器统一映射。</p>
+<h3 id="76-连接事件与在线状态">7.6 连接事件与在线状态</h3>
+<p>事件回调跑在 Paho 的回调线程上，同步发布可能阻塞回调线程，所以丢到独立线程；发布失败只告警，不影响主流程。这样 <code>online</code>（订阅成功主动发）和 <code>offline</code>（遗嘱）就形成闭环。</p>
+<p><img src="/blog/spring-boot-mqtt5/spring-boot-mqtt5-03.png" alt="在线状态 Retained/LWT 闭环"></p>
+<h2 id="八启动与端到端实测">八、启动与端到端实测</h2>
+<h3 id="81-构建与启动">8.1 构建与启动</h3>
+<p>顺序固定：<strong>先 Broker，再应用</strong>。看到订阅成功那一行日志，才说明连接、订阅、ClientManager 全链路通了。</p>
+<h3 id="82-设备上报遥测">8.2 设备上报遥测</h3>
+<p>用 <code>mosquitto_pub</code> 模拟设备上报 <code>demo/device/001/telemetry</code>，应用日志应解析出设备编号与指标；非法 JSON 只告警跳过，不影响后续消息。</p>
+<h3 id="83-rest-下发指令">8.3 REST 下发指令</h3>
+<p>先开一个订阅窗口 <code>mosquitto_sub -t "demo/device/001/command"</code>，再调发布接口。实测接口返回 <code>{"success":true,"retained":false,"qos":1,"topic":"demo/device/001/command"}</code>，订阅窗口收到对应指令。</p>
+<h3 id="84-保留消息与遗嘱消息实测">8.4 保留消息与遗嘱消息实测</h3>
+<p>先订阅状态主题，能立刻拿到 retained 的 <code>online</code>；然后<strong>强制杀掉应用进程</strong>（模拟异常掉线，而不是正常关闭），再查同一个主题，<code>offline</code> 由 Broker 代发——应用进程已经不在了，这正是 LWT 的价值。重启应用后再查，会重新变回 <code>online</code>。这一步很多教程只讲配置不验证，建议自己动手确认一次。</p>
+<h3 id="85-参数校验实测">8.5 参数校验实测</h3>
+<table>
+<thead>
+<tr>
+<th>请求</th>
+<th>实测结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qos: 3</code></td>
+<td>HTTP 400，<code>qos 最大为 2</code></td>
+</tr>
+<tr>
+<td><code>topic: "demo/+/bad"</code></td>
+<td>HTTP 400，<code>发布 Topic 不能包含通配符 + 或 #</code></td>
+</tr>
+<tr>
+<td>空 <code>payload</code></td>
+<td>HTTP 400，<code>payload 不能为空</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="九踩坑汇总">九、踩坑汇总</h2>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>根因</th>
+<th>处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Broker 退出码 3，<code>Invalid 'log_dest' value (console)</code></td>
+<td>该配置项无 <code>console</code> 取值</td>
+<td>改为 <code>log_dest stdout</code></td>
+</tr>
+<tr>
+<td>编译报 MQTT v5 类找不到</td>
+<td>Paho v5 是可选依赖，未显式引入</td>
+<td>pom 加 <code>org.eclipse.paho.mqttv5.client:1.2.5</code></td>
+</tr>
+<tr>
+<td>入站/出站反复掉线</td>
+<td>两个适配器各自建连且 Client ID 相同</td>
+<td>用 <code>Mqttv5ClientManager</code> 共享连接</td>
+</tr>
+<tr>
+<td>按类型注入 <code>MessageChannel</code> 有歧义</td>
+<td>Integration 自动注册 <code>errorChannel</code> 等</td>
+<td>加 <code>@Qualifier("mqttOutboundChannel")</code></td>
+</tr>
+<tr>
+<td>非法参数返回 HTTP 500</td>
+<td><code>IllegalArgumentException</code> 未被识别为参数错误</td>
+<td>加 <code>@RestControllerAdvice</code> 映射为 400</td>
+</tr>
+<tr>
+<td>Windows 控制台日志中文乱码</td>
+<td>Logback 控制台编码跟随系统代码页</td>
+<td>配 <code>logging.charset.console: UTF-8</code>，CMD 用 <code>chcp 65001</code></td>
+</tr>
+<tr>
+<td>订阅不到消息</td>
+<td>Topic 层级、大小写、通配符不匹配</td>
+<td>核对订阅日志与订阅成功事件</td>
+</tr>
+<tr>
+<td>QoS 1 收到重复消息</td>
+<td>协议至少一次投递 + 业务重复消费</td>
+<td>消息带 <code>messageId</code>，消费端幂等</td>
+</tr>
+</tbody>
+</table>
+<h2 id="十qos会话与可靠性怎么选">十、QoS、会话与可靠性怎么选</h2>
+<h3 id="101-qos-选择">10.1 QoS 选择</h3>
+<p>高频温度/位置遥测用 0 或 1，允许少量丢失；通用业务消息用 1 并做幂等；计费、关键指令才上 2。QoS 越高，握手次数和 Broker 状态开销越大，别一律拉满。</p>
+<h3 id="102-clean-start-与会话">10.2 Clean Start 与会话</h3>
+<p>本项目 <code>cleanStart=true</code>，每次连接从干净会话开始，断线期间的订阅与消息不保留。生产若要离线消息，需要：固定 Client ID + <code>cleanStart=false</code> + 合理的 Session Expiry + Broker 开启持久化。三者缺一，重连后照样丢消息。</p>
+<h3 id="103-qos-1-不等于不重复">10.3 QoS 1 不等于不重复</h3>
+<p>PUBLISH 与 PUBACK 之间任何一环丢包，发送方都会重发，接收方就可能收到两次。协议层只能保证「至少一次」，业务层必须用 <code>messageId</code> + 唯一索引 / 去重表实现幂等，这是消费端设计而不是 Broker 配置能解决的。</p>
+<h2 id="十一生产化建议">十一、生产化建议</h2>
+<h3 id="111-认证acl-与-tls">11.1 认证、ACL 与 TLS</h3>
+<p>关闭 <code>allow_anonymous</code>，用 <code>mosquitto_passwd</code> 建账号、配 ACL，按租户/产品/设备限制发布与订阅权限；外网一律上 TLS（8883），校验证书链与 SAN。凭据走环境变量或密钥管理，绝不写进代码仓库。</p>
+<h3 id="112-可观测性与多实例">11.2 可观测性与多实例</h3>
+<p>监控连接数、消息吞吐、消费延迟、重连次数、设备在线率；连接事件回调已可监听订阅成功与连接失败，可扩展成告警。多实例部署时每个实例用唯一 Client ID，需要负载均衡消费时用 MQTT 5 的共享订阅 <code>$share</code>，避免多实例重复消费同一条消息。</p>
+<h3 id="113-mqtt-与其他中间件分工">11.3 MQTT 与其他中间件分工</h3>
+<table>
+<thead>
+<tr>
+<th>技术</th>
+<th>适合承担的职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MQTT</td>
+<td>设备、网关与服务之间的轻量级实时消息接入</td>
+</tr>
+<tr>
+<td>Kafka / RocketMQ</td>
+<td>平台内部事件流、业务解耦、高吞吐数据管道</td>
+</tr>
+<tr>
+<td>Redis</td>
+<td>在线状态缓存、短期去重、限流</td>
+</tr>
+<tr>
+<td>MySQL</td>
+<td>设备档案、业务配置、告警记录</td>
+</tr>
+<tr>
+<td>时序数据库</td>
+<td>温度、压力、位置等周期性指标的历史存储</td>
+</tr>
+</tbody>
+</table>
+<p><img src="/blog/spring-boot-mqtt5/spring-boot-mqtt5-04.png" alt="MQTT 与内部中间件生态分工"></p>
+<p>常见架构是：设备通过 MQTT 上报到 Broker → Spring Boot 接入服务消费校验 → 业务事件投递 Kafka / 写库。MQTT 解决设备侧接入，内部消息平台解决系统间异步解耦，两者不是替代关系。</p>
+<h2 id="十二小结">十二、小结</h2>
+<p>这套工程把 MQTT 接入最核心的五件事落到了可运行的代码里：共享连接、订阅入站、发布出站、状态感知、参数与异常治理。真正花时间的不是写 <code>IntegrationFlow</code>，而是把 Broker 起对、把 Client ID 与连接管对、把实测暴露的 500 和乱码修掉。三个最容易复盘的点：</p>
+<ol>
+<li><strong>Paho v5 必须显式依赖</strong>，漏了编译期就报 v5 类找不到；</li>
+<li><strong>入站出站共享一个 ClientManager</strong>，否则同 Client ID 互相踢下线、反复重连；</li>
+<li><strong>QoS 1 只保证至少一次</strong>，重复消费靠业务层 <code>messageId</code> 幂等解决。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-mqtt5/">https://zhanzhenguan.github.io/blog/spring-boot-mqtt5/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-mongodb/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 数据访问：整合 MongoDB 文档数据库</div> </a> <a class="next" href="/blog/spring-boot-mybatis/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环","description":"整理 Spring Boot 3 接入 MQTT 5 的要点：版本基线与 Paho v5 显式依赖、发布订阅模型与 Topic 通配符、QoS 等级、Retained 保留消息与 LWT 遗嘱消息、Mosquitto Broker 准备与 log_dest 踩坑、Mqttv5ClientManager 共享连接、入站/出站 IntegrationFlow、@Qualifier 注入歧义、非法参数 500 修复、cleanStart 与会话可靠性、认证 ACL/TLS 生产化与 MQTT 同 Kafka/Redis/DB 的分工。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-mqtt5/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

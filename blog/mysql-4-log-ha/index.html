@@ -1,0 +1,375 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 MySQL 从单机到集群的架构知识：redo log（InnoDB 物理日志、WAL、循环写、崩溃恢复）、binlog（Server 层逻辑日志、主从复制与 PITR、STATEMENT/ROW/MIXED 格式）、undo log（反向操作、回滚与 MVCC 版本链）；两阶段提交如何保证 redo log 与 binlog 一致；主从复制三步流程、主从延迟原因与并行复制；Spring AbstractRoutingDataSource + AOP 实现读写分离；垂直/水平拆分、取模/范围/一致性哈希分片策略、ShardingSphere-JDBC 配置与分库分表后的五大挑战。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="MySQL 日志与高可用架构：redo/binlog/undo、两阶段提交、主从复制与分库分表"><meta property="og:description" content="整理 MySQL 从单机到集群的架构知识：redo log（InnoDB 物理日志、WAL、循环写、崩溃恢复）、binlog（Server 层逻辑日志、主从复制与 PITR、STATEMENT/ROW/MIXED 格式）、undo log（反向操作、回滚与 MVCC 版本链）；两阶段提交如何保证 redo log 与 binlog 一致；主从复制三步流程、主从延迟原因与并行复制；Spring AbstractRoutingDataSource + AOP 实现读写分离；垂直/水平拆分、取模/范围/一致性哈希分片策略、ShardingSphere-JDBC 配置与分库分表后的五大挑战。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/mysql-4-log-ha/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>MySQL 日志与高可用架构：redo/binlog/undo、两阶段提交、主从复制与分库分表</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/mysql/">MySQL</a>  <span class="sep">/</span> <span class="current">MySQL 日志与高可用架构：redo/binlog/undo、两阶段提交、主从复制与分库分表</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>MySQL 日志与高可用架构：redo/binlog/undo、两阶段提交、主从复制与分库分表</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 5 分钟</span> <span>· 1667 字</span> <span class="meta-tags"> <a class="tag" href="/tags/mysql/">#MySQL</a><a class="tag" href="/tags/68051bf4/">#数据库</a><a class="tag" href="/tags/456d29ef/">#日志</a><a class="tag" href="/tags/cb09c9c5/">#主从复制</a><a class="tag" href="/tags/574856cf/">#分库分表</a><a class="tag" href="/tags/bf5e0264/">#高可用</a> </span> </div> </header>   <p>前三篇都在单机范围内讨论索引、事务与锁。这一篇走出单机，进入分布式视角：先讲三种核心日志，再到两阶段提交、主从复制与读写分离，最后是分库分表。SQL、配置与代码为通用示例。</p>
+<h2 id="一日志系统数据的黑匣子">一、日志系统：数据的”黑匣子”</h2>
+<p>MySQL 有三种核心日志：<strong>redo log</strong>、<strong>binlog</strong>、<strong>undo log</strong>。分工不同，但共同保障数据安全与一致性。</p>
+<h3 id="11-redo-log崩溃恢复的最后防线">1.1 redo log：崩溃恢复的最后防线</h3>
+<p>redo log 是 InnoDB 特有的<strong>物理日志</strong>，记录”数据页上做了什么修改”，用于保证<strong>持久性</strong>。其工作原理基于 <strong>WAL（Write-Ahead Logging，预写日志）</strong>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>没有 redo log 的流程：</span></span>
+<span class="line"><span>  每次 UPDATE → 找到磁盘上的数据页 → 修改 → 刷回磁盘</span></span>
+<span class="line"><span>  → 每次修改都是随机磁盘 I/O，极慢</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>WAL 流程：</span></span>
+<span class="line"><span>  每次 UPDATE → 修改 Buffer Pool 中的内存数据</span></span>
+<span class="line"><span>             → 写入 redo log（顺序追加写）</span></span>
+<span class="line"><span>             → 后台线程定期将脏页刷回磁盘</span></span>
+<span class="line"><span>  → 顺序写比随机写快很多</span></span></code></pre>
+<p>redo log 是循环写的：它由固定大小的几个文件组成，写满后从头覆盖。它只需保证”最近修改的数据不丢失”，之前的数据只要已刷到数据文件，对应的 redo log 就可以被覆盖。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 查看 redo log 配置</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">SHOW VARIABLES </span><span style="color:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'innodb_log_file_size'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;       </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 每个文件大小（默认 48MB）</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">SHOW VARIABLES </span><span style="color:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'innodb_log_files_in_group'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 文件数量（默认 2 个）</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 总大小 = 48MB × 2 = 96MB，高写入场景可能偏小</span></span></code></pre>
+<h3 id="12-binlog主从复制的信使">1.2 binlog：主从复制的信使</h3>
+<p>binlog 是 <strong>Server 层</strong>的逻辑日志，记录所有引起数据变化的 SQL 语句（或其行数据），主要用于主从复制和按时间点恢复。</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>redo log</th>
+<th>binlog</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>所属层</strong></td>
+<td>InnoDB 引擎层</td>
+<td>Server 层（所有引擎共用）</td>
+</tr>
+<tr>
+<td><strong>记录内容</strong></td>
+<td>物理日志（“第 10 页偏移 200 处写入 xxxx”）</td>
+<td>逻辑日志（“UPDATE user SET name=‘张三’ WHERE id=1”）</td>
+</tr>
+<tr>
+<td><strong>写入方式</strong></td>
+<td>循环写（固定大小，满了覆盖）</td>
+<td>追加写（满了切新文件，不覆盖）</td>
+</tr>
+<tr>
+<td><strong>用途</strong></td>
+<td>崩溃恢复（crash-safe）</td>
+<td>主从复制、数据恢复</td>
+</tr>
+<tr>
+<td><strong>可读性</strong></td>
+<td>不可直接读</td>
+<td>可用 mysqlbinlog 工具查看</td>
+</tr>
+</tbody>
+</table>
+<p><strong>binlog 的三种格式</strong>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">SHOW VARIABLES </span><span style="color:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'binlog_format'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<table>
+<thead>
+<tr>
+<th>格式</th>
+<th>记录方式</th>
+<th>优点</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>STATEMENT</td>
+<td>记录 SQL 语句</td>
+<td>日志量小</td>
+<td>不确定函数（<code>NOW()</code>、<code>UUID()</code>）会导致主从不一致</td>
+</tr>
+<tr>
+<td><strong>ROW（推荐）</strong></td>
+<td>记录每行的具体变更</td>
+<td>精确，主从绝对一致</td>
+<td>日志量大</td>
+</tr>
+<tr>
+<td>MIXED</td>
+<td>混合，大多数用 STATEMENT</td>
+<td>折中</td>
+<td>仍是过渡方案</td>
+</tr>
+</tbody>
+</table>
+<p>生产环境推荐 <strong>ROW 格式</strong>：虽然日志量大一点，但主从一致性是底线，不能妥协。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- 恢复某个时间点</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">mysqlbinlog </span><span style="color:#6A737D;--shiki-dark:#6A737D">--start-datetime="2025-06-01 10:00:00" \</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">  --stop-datetime="2025-06-01 11:00:00" \</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">  mysql</span><span style="color:#D73A49;--shiki-dark:#F97583">-</span><span style="color:#005CC5;--shiki-dark:#79B8FF">bin</span><span style="color:#24292E;--shiki-dark:#E1E4E8">.</span><span style="color:#005CC5;--shiki-dark:#79B8FF">000001</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> | mysql </span><span style="color:#D73A49;--shiki-dark:#F97583">-</span><span style="color:#24292E;--shiki-dark:#E1E4E8">u </span><span style="color:#D73A49;--shiki-dark:#F97583">root</span><span style="color:#D73A49;--shiki-dark:#F97583"> -</span><span style="color:#24292E;--shiki-dark:#E1E4E8">p</span></span></code></pre>
+<h3 id="13-undo-log回滚与-mvcc-的幕后英雄">1.3 undo log：回滚与 MVCC 的幕后英雄</h3>
+<p>undo log 记录数据的”反向操作”，用于事务回滚和 MVCC：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>INSERT → undo log 记录 DELETE（回滚时删除这条数据）</span></span>
+<span class="line"><span>UPDATE → undo log 记录逆 UPDATE（回滚时把值改回旧的）</span></span>
+<span class="line"><span>DELETE → undo log 记录 INSERT（回滚时重新插入）</span></span></code></pre>
+<p>MVCC 中的版本链就是通过 undo log 串起来的：每行的 <code>DB_ROLL_PTR</code> 指向 undo log 中的上一个版本，读事务据此回溯到适合自己的历史版本。</p>
+<p><img src="/blog/mysql-4-log-ha/mysql-4-log-ha-01.png" alt="三种日志分工"></p>
+<h2 id="二两阶段提交redo-log-和-binlog-的握手协议">二、两阶段提交：redo log 和 binlog 的握手协议</h2>
+<h3 id="21-为什么需要两阶段提交">2.1 为什么需要两阶段提交</h3>
+<p>如果没有协调机制，两种写顺序都可能造成主从不一致：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>场景 A：先写 redo log，后写 binlog</span></span>
+<span class="line"><span>  redo log 写完后宕机，binlog 没写</span></span>
+<span class="line"><span>  → 主库通过 redo log 恢复了这笔数据</span></span>
+<span class="line"><span>  → 从库没收到 binlog，没有这笔数据 → 主从不一致</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>场景 B：先写 binlog，后写 redo log</span></span>
+<span class="line"><span>  binlog 写完后宕机，redo log 没写</span></span>
+<span class="line"><span>  → 主库崩溃恢复后没有这笔数据</span></span>
+<span class="line"><span>  → 从库通过 binlog 同步了这笔数据 → 主从不一致</span></span></code></pre>
+<h3 id="22-两阶段提交流程">2.2 两阶段提交流程</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>事务提交过程：</span></span>
+<span class="line"><span>  1. 写入 redo log（标记为 prepare 状态）</span></span>
+<span class="line"><span>  2. 写入 binlog</span></span>
+<span class="line"><span>  3. 将 redo log 标记为 commit 状态</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>崩溃恢复时的判断：</span></span>
+<span class="line"><span>┌──────────────────────────────────────┬──────────┐</span></span>
+<span class="line"><span>│ 发现情况                              │ 处理方式  │</span></span>
+<span class="line"><span>├──────────────────────────────────────┼──────────┤</span></span>
+<span class="line"><span>│ redo log 是 prepare + binlog 完整     │ 提交事务  │</span></span>
+<span class="line"><span>│ redo log 是 prepare + binlog 缺失     │ 回滚事务  │</span></span>
+<span class="line"><span>│ redo log 是 commit                    │ 提交事务  │</span></span>
+<span class="line"><span>└──────────────────────────────────────┴──────────┘</span></span></code></pre>
+<p>核心思想：<strong>以 binlog 的完整性为准</strong>。binlog 写了，说明事务应被所有节点感知；binlog 没写，说明事务还不应该”出生”。</p>
+<h2 id="三主从复制与读写分离">三、主从复制与读写分离</h2>
+<h3 id="31-主从复制的三个角色与三步流程">3.1 主从复制的三个角色与三步流程</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>┌──────────┐  binlog 推送   ┌───────────┐</span></span>
+<span class="line"><span>│ Master   │ ─────────────→ │ Slave     │</span></span>
+<span class="line"><span>│ (主库)   │                │ (从库)    │</span></span>
+<span class="line"><span>│ 写操作   │                │ 读操作    │</span></span>
+<span class="line"><span>└──────────┘                └───────────┘</span></span>
+<span class="line"><span>                                  ↑</span></span>
+<span class="line"><span>                  ┌───────────────┴───────────────┐</span></span>
+<span class="line"><span>                  │ IO 线程：拉取 binlog → 写 relay log │</span></span>
+<span class="line"><span>                  │ SQL 线程：执行 relay log（重放）    │</span></span>
+<span class="line"><span>                  └───────────────────────────────┘</span></span></code></pre>
+<p>三个步骤：</p>
+<ol>
+<li>Master 将所有数据变更写入 binlog；</li>
+<li>Slave 的 <strong>IO 线程</strong>连接 Master，拉取 binlog 并写入本地 relay log（中继日志）；</li>
+<li>Slave 的 <strong>SQL 线程</strong>读取 relay log，逐条执行，把 Master 的变更重放到 Slave。</li>
+</ol>
+<p><img src="/blog/mysql-4-log-ha/mysql-4-log-ha-02.png" alt="主从复制架构"></p>
+<h3 id="32-主从延迟最常见的生产问题">3.2 主从延迟：最常见的生产问题</h3>
+<p><strong>延迟原因</strong>：</p>
+<ul>
+<li>Slave 机器配置低于 Master（“小马拉大车”）；</li>
+<li>Slave 承接过多读请求，CPU/IO 被打满；</li>
+<li>Master 上的大事务在 Slave 上重放需要同等时间；</li>
+<li>Slave 单线程回放（MySQL 5.6 之前）。</li>
+</ul>
+<p><strong>解决方案</strong>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="sql"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">-- MySQL 5.7+ 开启基于组提交的并行复制（在 Slave 上设置）</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">STOP</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SLAVE SQL_THREAD;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> slave_parallel_type </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'LOGICAL_CLOCK'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">SET</span><span style="color:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> slave_parallel_workers </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 4</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">-- 并行线程数</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">START</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SLAVE SQL_THREAD;</span></span></code></pre>
+<ul>
+<li>延迟特别敏感的业务（如下单后立即查订单），直接从 <strong>Master</strong> 读；</li>
+<li>可接受几秒延迟的场景（如列表展示），走 <strong>Slave</strong>。</li>
+</ul>
+<h3 id="33-java-中的读写分离实现">3.3 Java 中的读写分离实现</h3>
+<p>Spring 提供 <code>AbstractRoutingDataSource</code> 作为动态数据源路由基类，配合 <code>ThreadLocal</code> 与 AOP 切换：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> DynamicDataSource</span><span style="color:#D73A49;--shiki-dark:#F97583"> extends</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> AbstractRoutingDataSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    private</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> final</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ThreadLocal&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">String</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> CONTEXT_HOLDER </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> ThreadLocal&#x3C;>();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> setDataSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(String </span><span style="color:#E36209;--shiki-dark:#FFAB70">type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) { CONTEXT_HOLDER.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">set</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(type); } </span><span style="color:#6A737D;--shiki-dark:#6A737D">// "master" 或 "slave"</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> static</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> clear</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() { CONTEXT_HOLDER.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">remove</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(); }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    protected</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Object </span><span style="color:#6F42C1;--shiki-dark:#B392F0">determineCurrentLookupKey</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="color:#D73A49;--shiki-dark:#F97583">return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> CONTEXT_HOLDER.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">get</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(); }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">// 通过 AOP 自动切换：标了 @ReadOnly 的方法走从库</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Aspect</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Component</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> DataSourceAspect</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Before</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"@annotation(com.example.ReadOnly)"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> switchToSlave</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() { DynamicDataSource.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setDataSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"slave"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">); }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">After</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"@annotation(com.example.ReadOnly)"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> clearDataSource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() { DynamicDataSource.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">clear</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(); }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Service</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> OrderService</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">ReadOnly</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> List&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">Order</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">listOrders</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Long </span><span style="color:#E36209;--shiki-dark:#FFAB70">userId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> orderMapper.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">selectByUserId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(userId); </span><span style="color:#6A737D;--shiki-dark:#6A737D">// 自动走从库读</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">    // 不加注解，默认走主库写</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> createOrder</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Order </span><span style="color:#E36209;--shiki-dark:#FFAB70">order</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) { orderMapper.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">insert</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(order); }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="34-常见复制架构">3.4 常见复制架构</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>一主一从   → 最简单结构，适合小项目</span></span>
+<span class="line"><span>一主多从   → 读多写少场景，多从库分担读压力</span></span>
+<span class="line"><span>双主互备   → 两台都是 Master，高可用，但需处理数据冲突</span></span>
+<span class="line"><span>级联复制   → Master → Slave1 → Slave2，减轻 Master 的 IO 压力</span></span></code></pre>
+<h2 id="四分库分表当单表撑不住的时候">四、分库分表：当单表撑不住的时候</h2>
+<h3 id="41-什么时候该出手">4.1 什么时候该出手</h3>
+<p>分库分表是<strong>最后手段</strong>，不是第一手段。决定之前，先确认索引优化、SQL 优化、缓存（Redis）、读写分离都已做完。</p>
+<table>
+<thead>
+<tr>
+<th>信号</th>
+<th>阈值参考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单表数据量</td>
+<td>超过 <strong>2000 万</strong> 行后查询性能显著下降（视硬件和索引而定）</td>
+</tr>
+<tr>
+<td>磁盘空间</td>
+<td>单库接近磁盘容量上限</td>
+</tr>
+<tr>
+<td>连接数</td>
+<td>单库连接数超过 2000（MySQL 单库建议上限）</td>
+</tr>
+<tr>
+<td>写入瓶颈</td>
+<td>单库写入 QPS 达到磁盘瓶颈</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-垂直拆分-vs-水平拆分">4.2 垂直拆分 vs 水平拆分</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>垂直分库（按业务）：</span></span>
+<span class="line"><span>  原来的大库 → 用户库（user 相关表）</span></span>
+<span class="line"><span>            → 订单库（order 相关表）</span></span>
+<span class="line"><span>            → 商品库（product 相关表）</span></span>
+<span class="line"><span>  每个库表结构不同，拆的是"业务维度"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>水平分表（按数据行）：</span></span>
+<span class="line"><span>  user 表 5000W 行 → user_0（id % 4 = 0）</span></span>
+<span class="line"><span>                  → user_1（id % 4 = 1）</span></span>
+<span class="line"><span>                  → user_2（id % 4 = 2）</span></span>
+<span class="line"><span>                  → user_3（id % 4 = 3）</span></span>
+<span class="line"><span>  每个表结构完全一样，拆的是"数据行维度"</span></span></code></pre>
+<h3 id="43-三种分片策略">4.3 三种分片策略</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">// 1. 取模分片 —— 数据均匀，扩容需迁移</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">int</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> tableIndex </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> userId </span><span style="color:#D73A49;--shiki-dark:#F97583">%</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 4</span><span style="color:#24292E;--shiki-dark:#E1E4E8">; </span><span style="color:#6A737D;--shiki-dark:#6A737D">// 0, 1, 2, 3</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">// 2. 范围分片 —— 扩容方便，但可能有热点</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (userId </span><span style="color:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 10_000_000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)      tableName </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "user_0"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">else</span><span style="color:#D73A49;--shiki-dark:#F97583"> if</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> (userId </span><span style="color:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> 20_000_000</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) tableName </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "user_1"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">else</span><span style="color:#24292E;--shiki-dark:#E1E4E8">                           tableName </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> "user_2"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">// 3. 一致性哈希 —— 扩容时迁移量最少</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">// 将分片节点和数据 key 都映射到 hash 环上，数据由顺时针方向第一个节点管理</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">// 扩容时只需迁移少部分数据</span></span></code></pre>
+<h3 id="44-分库分表中间件选择">4.4 分库分表中间件选择</h3>
+<table>
+<thead>
+<tr>
+<th>中间件</th>
+<th>类型</th>
+<th>选型建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ShardingSphere-JDBC</strong></td>
+<td>客户端 SDK</td>
+<td>Java 生态首选，Apache 顶级项目，无独立部署</td>
+</tr>
+<tr>
+<td><strong>ShardingSphere-Proxy</strong></td>
+<td>代理层</td>
+<td>需要独立部署，支持异构语言</td>
+</tr>
+<tr>
+<td><strong>MyCat</strong></td>
+<td>代理层</td>
+<td>老牌方案，社区活跃度不如 ShardingSphere</td>
+</tr>
+</tbody>
+</table>
+<p>Java 项目最自然的选择是 <strong>ShardingSphere-JDBC</strong>：它是一个 jar 包，直接集成在 Spring Boot 项目里，不需要额外服务器。</p>
+<h3 id="45-shardingsphere-jdbc-配置示例">4.5 ShardingSphere-JDBC 配置示例</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  shardingsphere</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    datasource</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      names</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">ds0, ds1</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      ds0</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">com.zaxxer.hikari.HikariDataSource</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        driver-class-name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">com.mysql.cj.jdbc.Driver</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        jdbc-url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">jdbc:mysql://localhost:3306/db_0</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      ds1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">com.zaxxer.hikari.HikariDataSource</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        driver-class-name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">com.mysql.cj.jdbc.Driver</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        jdbc-url</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">jdbc:mysql://localhost:3306/db_1</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    rules</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      sharding</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        tables</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">          t_order</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            actual-data-nodes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">ds$->{0..1}.t_order_$->{0..1}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            database-strategy</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">              standard</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                sharding-column</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">user_id</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                sharding-algorithm-name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">db-inline</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            table-strategy</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">              standard</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                sharding-column</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">order_id</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                sharding-algorithm-name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">tbl-inline</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            sharding-algorithms</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">              db-inline</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">INLINE</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                props</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                  algorithm-expression</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">ds$->{user_id % 2}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">              tbl-inline</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">INLINE</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                props</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">                  algorithm-expression</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">t_order_$->{order_id % 2}</span></span></code></pre>
+<h3 id="46-分库分表后的五大新挑战">4.6 分库分表后的五大新挑战</h3>
+<table>
+<thead>
+<tr>
+<th>挑战</th>
+<th>解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>分布式 ID</strong></td>
+<td>雪花算法（Snowflake），不能再用自增主键</td>
+</tr>
+<tr>
+<td><strong>跨分片查询</strong></td>
+<td>避免跨分片 ORDER BY / GROUP BY，或使用中间件聚合</td>
+</tr>
+<tr>
+<td><strong>跨分片 JOIN</strong></td>
+<td>字段冗余 + 应用层组装，或换用 NoSQL</td>
+</tr>
+<tr>
+<td><strong>分布式事务</strong></td>
+<td>Seata（AT/TCC 模式），或接受最终一致性</td>
+</tr>
+<tr>
+<td><strong>平滑扩容</strong></td>
+<td>一致性哈希 + 双写 + 渐进式数据迁移</td>
+</tr>
+</tbody>
+</table>
+<p><img src="/blog/mysql-4-log-ha/mysql-4-log-ha-03.png" alt="分库分表"></p>
+<p>分库分表是一把双刃剑：能解决海量数据的存储和查询问题，但也极大增加系统复杂度。没有到真正瓶颈之前，不要为了”架构好看”而做分库分表。</p>
+<h2 id="五小结">五、小结</h2>
+<p>学完本篇，应能回答：redo log 和 binlog 分别是什么、用途是什么；为什么需要两阶段提交、如何保证一致性；主从复制如何实现、主从延迟怎么解决；Java 项目如何实现读写分离；什么时候需要分库分表、垂直与水平拆分的区别；ShardingSphere-JDBC 怎么配置、分片策略有哪几种；分库分表后会带来哪些新挑战。</p>
+<p>三句最关键的认知：</p>
+<ol>
+<li><strong>三日志各司其职</strong>：redo log 保崩溃恢复，binlog 保复制与恢复，undo log 保回滚与版本链；</li>
+<li><strong>两阶段提交以 binlog 完整性为准</strong>：prepare → binlog → commit，崩溃恢复据此决定提交或回滚；</li>
+<li><strong>分库分表是最后手段</strong>：先榨干索引、SQL、缓存与读写分离；分片后要额外解决分布式 ID、跨分片查询/JOIN、分布式事务与平滑扩容。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳；配置与阈值为通用参考，生产环境需按实际硬件与业务压测调整。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>MySQL 日志与高可用架构：redo/binlog/undo、两阶段提交、主从复制与分库分表</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/mysql-4-log-ha/">https://zhanzhenguan.github.io/blog/mysql-4-log-ha/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-5-sharding/">数据库分库分表策略全解：垂直/水平拆分、四种分片策略、落地姿势与连环坑</a> <p>系统梳理分库分表：单表三大瓶颈（数据量、并发、磁盘内存）与 500 万~2000 万行阈值；垂直切（按列窄表、垂直分库按业务）与水平切（按行同结构表）；Range、Hash 取模、一致性哈希、业务/地域四种分片策略及选型；应用层硬编码、ShardingSphere-JDBC 插件、数据库代理三种落地姿势与分片键/算法/策略/绑定表/广播表概念；全局唯一 ID（UUID、Snowflake、号段、Redis 自增）、跨分片查询与异构索引/基因法、分布式事务方案、双写平滑迁移。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-1-basics/">MySQL 基础入门：分层架构、SQL 执行流程与 InnoDB/MyISAM 引擎对比</a> <p>整理 Java 开发视角的 MySQL 基础认知：知识体系图谱、Server 层与存储引擎层分层架构、一条 SELECT 的连接器/分析器/优化器/执行器流程、MySQL 8.0 移除查询缓存、UPDATE 涉及的 Buffer Pool 与 undo/redo/binlog 日志链路、InnoDB 与 MyISAM 在事务/行锁/外键/崩溃恢复/MVCC/聚簇索引/COUNT(*) 上的差异，以及生产环境为何默认选 InnoDB。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/mysql-2-index/">MySQL 索引探秘：B+Tree、聚簇/二级索引、回表与最左前缀</a> <p>整理 MySQL 索引原理与优化：索引作为有序数据结构减少磁盘 I/O；B+Tree 非叶子节点只存键、叶子节点双向链表相连的结构与四个核心优势、千万级表 2-3 层树高的 I/O 估算；聚簇索引叶子存整行、二级索引叶子存主键值；回表与覆盖索引；联合索引最左前缀原则与索引下推（MySQL 5.6+）；EXPLAIN 的 type/Extra/key/rows 判读；深分页延迟关联、JOIN 小表驱动大表、ORDER BY 索引排序、建索引六要六不要与 COUNT 优化。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/mysql-5-sharding/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">数据库分库分表策略全解：垂直/水平拆分、四种分片策略、落地姿势与连环坑</div> </a> <a class="next" href="/blog/minio-basics/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">MinIO 入门：对象存储概念、优缺点、核心组件与 Docker / 本地二进制部署</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"MySQL 日志与高可用架构：redo/binlog/undo、两阶段提交、主从复制与分库分表","description":"整理 MySQL 从单机到集群的架构知识：redo log（InnoDB 物理日志、WAL、循环写、崩溃恢复）、binlog（Server 层逻辑日志、主从复制与 PITR、STATEMENT/ROW/MIXED 格式）、undo log（反向操作、回滚与 MVCC 版本链）；两阶段提交如何保证 redo log 与 binlog 一致；主从复制三步流程、主从延迟原因与并行复制；Spring AbstractRoutingDataSource + AOP 实现读写分离；垂直/水平拆分、取模/范围/一致性哈希分片策略、ShardingSphere-JDBC 配置与分库分表后的五大挑战。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/mysql-4-log-ha/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Spring Boot Web 开发要点：starter-web 与自动配置包、Thymeleaf/FreeMarker 模板引擎、ViewResolver 与静态资源、Converter/MessageConverter、接管 Web 配置、注册 Servlet/Filter/Listener、内嵌 Tomcat 配置与替换、SSL/HTTPS 与证书格式。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS"><meta property="og:description" content="整理 Spring Boot Web 开发要点：starter-web 与自动配置包、Thymeleaf/FreeMarker 模板引擎、ViewResolver 与静态资源、Converter/MessageConverter、接管 Web 配置、注册 Servlet/Filter/Listener、内嵌 Tomcat 配置与替换、SSL/HTTPS 与证书格式。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-web/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</h1> <div class="meta"> <time datetime="2026-11-27T00:00:00.000Z">2026年11月27日</time>  <span>· 约 8 分钟</span> <span>· 2534 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/web/">#Web</a><a class="tag" href="/tags/thymeleaf/">#Thymeleaf</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li class="current">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS（本文）</li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li><a href="/blog/spring-boot-sso/">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</a></li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第二部分，聚焦 Web 开发：模板引擎（Thymeleaf、FreeMarker）、Web 层自动配置项、内嵌 Servlet 容器配置与替换，以及 SSL/HTTPS 与证书格式基础。代码为通用示例，版本以 Spring Boot 2.7 / Spring 5 为参照。</p>
+<h2 id="一web-开发支持">一、Web 开发支持</h2>
+<p>Spring Boot 通过 <code>spring-boot-starter-web</code> 提供 Web 开发支持：它带来内嵌 Tomcat 与 Spring MVC 依赖。Web 相关的自动配置位于 <code>spring-boot-autoconfigure</code> 包下的 <code>org.springframework.boot.autoconfigure.web</code> 目录。</p>
+<p>从包内类名可以看出两类职责：</p>
+<ul>
+<li><code>ServerPropertiesAutoConfiguration</code> / <code>ServerProperties</code>：自动配置内嵌服务器；</li>
+<li><code>HttpEncodingAutoConfiguration</code> / <code>HttpEncodingProperties</code>：自动配置 HTTP 编码。</li>
+</ul>
+<p>其余类还覆盖错误处理（<code>ErrorController</code>、<code>ErrorAttributes</code>、<code>ErrorViewResolver</code>）、消息转换器（<code>HttpMessageConverters</code>、<code>JacksonHttpMessageConvertersConfiguration</code>、<code>GsonHttpMessageConvertersConfiguration</code>）、静态资源链、文件上传（<code>MultipartAutoConfiguration</code>、<code>MultipartProperties</code>）等。</p>
+<h2 id="二thymeleaf-模板引擎">二、Thymeleaf 模板引擎</h2>
+<h3 id="21-为什么推荐-thymeleaf">2.1 为什么推荐 Thymeleaf</h3>
+<p>Spring Boot 提供多种模板引擎，推荐使用 Thymeleaf，因为它对 Spring MVC 有完善支持。不建议使用 JSP：JSP 在内嵌 Servlet 容器（内嵌 Tomcat、Jetty）中以 Jar 形式运行存在限制。</p>
+<p>Thymeleaf 是一个面向 XHTML/XML/HTML5 的 Java 模板引擎，可作为 MVC Web 应用的 View 层，并通过额外模块与 Spring MVC 集成，完全替代 JSP。</p>
+<h3 id="22-基础语法">2.2 基础语法</h3>
+<ul>
+<li><strong>命名空间</strong>：页面通过 <code>xmlns:th="http://www.thymeleaf.org"</code> 引入，需要动态处理的元素以 <code>th:</code> 为前缀；</li>
+<li><strong>静态资源</strong>：用 <code>@{}</code> 引入 CSS、JS 等静态文件；</li>
+<li><strong>访问 Model 数据</strong>：用 <code>${}</code> 访问 Model 属性，与 JSP EL 类似；</li>
+<li><strong>迭代</strong>：用 <code>th:each</code> 循环集合，迭代元素在表达式中访问其属性；</li>
+<li><strong>条件判断</strong>：用 <code>th:if</code> 判断，支持 <code>></code>、<code>&#x3C;</code>、<code>>=</code>、<code>&#x3C;=</code>、<code>==</code>、<code>!=</code>，条件中可使用 Spring EL 表达式；</li>
+<li><strong>在 JS 中访问 Model</strong>：给 <code>&#x3C;script></code> 加 <code>th:inline="javascript"</code>，通过 <code>[[${}]]</code> 取值；</li>
+<li><strong>行内事件</strong>：用 <code>th:onclick</code> 拼接点击方法与属性值。</li>
+</ul>
+<p>常见表达式片段：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="html"><code><span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">&#x3C;!-- 引入静态资源 --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">link</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> rel</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"stylesheet"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> th:href</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"@{/css/app.css}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">&#x3C;!-- 取值 --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">span</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> th:text</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"${person.name}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">span</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">&#x3C;!-- 迭代 --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">div</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> th:each</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"person : ${people}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">span</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> th:text</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"${person.name}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">span</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">div</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">&#x3C;!-- 条件判断 --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">div</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> th:if</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"${not #lists.isEmpty(people)}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>列表非空&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">div</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">&#x3C;!-- JS 内联取值 --></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">script</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> th:inline</span><span style="color:#24292E;--shiki-dark:#E1E4E8">=</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"javascript"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    const</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> name</span><span style="color:#D73A49;--shiki-dark:#F97583"> =</span><span style="color:#6A737D;--shiki-dark:#6A737D"> /*[[${person.name}]]*/</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> 'default'</span><span style="color:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">script</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="23-与-spring-mvc-集成原理">2.3 与 Spring MVC 集成原理</h3>
+<p>在 Spring MVC 中集成模板引擎需要定义 <code>ViewResolver</code>，<code>ViewResolver</code> 再解析出具体的 <code>View</code>。传统 JSP 用 <code>InternalResourceViewResolver</code> 配合 <code>JstlView</code>；Thymeleaf 同样提供了对应的 <code>ThymeleafView</code> 与 <code>ThymeleafViewResolver</code>，并由 <code>SpringTemplateEngine</code> 驱动模板渲染，<code>TemplateResolver</code> 负责模板前缀、后缀等通用配置。</p>
+<h3 id="24-spring-boot-的自动配置">2.4 Spring Boot 的自动配置</h3>
+<p>Spring Boot 通过 <code>org.springframework.boot.autoconfigure.thymeleaf</code> 包完成自动配置：</p>
+<ul>
+<li><code>ThymeleafAutoConfiguration</code>：自动配置集成所需 Bean，包括 <code>TemplateResolver</code>、<code>TemplateEngine</code>、<code>ThymeleafViewResolver</code>；</li>
+<li><code>ThymeleafProperties</code>：绑定以 <code>spring.thymeleaf</code> 开头的配置项，提供默认值。</li>
+</ul>
+<h3 id="25-实战步骤">2.5 实战步骤</h3>
+<ol>
+<li><strong>引入依赖</strong>：<code>spring-boot-starter-thymeleaf</code> 会自动包含 <code>spring-boot-starter-web</code>：</li>
+</ol>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-thymeleaf&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<ol start="2">
+<li><strong>编写 JavaBean</strong>：用于在模板页面展示数据；</li>
+<li><strong>放置静态文件</strong>：脚本、样式、图片等放在 <code>src/main/resources/static</code> 下；</li>
+<li><strong>编写页面</strong>：按默认规则，模板页面放在 <code>src/main/resources/templates</code> 下，新建 <code>index.html</code>；</li>
+<li><strong>准备数据</strong>：在 Controller 方法中把数据放入 Model（也可放在入口类演示）；</li>
+<li><strong>运行访问</strong>：启动后通过对应路径访问页面。</li>
+</ol>
+<p><img src="/blog/spring-boot-web/spring-boot-web-01.png" alt="Thymeleaf 与 Spring MVC 组件关系"></p>
+<h2 id="三freemarker-模板引擎">三、FreeMarker 模板引擎</h2>
+<h3 id="31-基本概念">3.1 基本概念</h3>
+<p>FreeMarker 是基于 Java 的模板引擎，用于生成动态内容（HTML 网页、邮件、配置文件、源代码等）。<code>.ftl</code> 文件包含静态文本与 FreeMarker 模板指令，模板与数据模型结合后生成最终输出。</p>
+<ul>
+<li><strong>模板</strong>：包含静态内容与动态占位符的文本文件（<code>.ftl</code>）；</li>
+<li><strong>数据模型</strong>：填充占位符的数据结构（Java 对象、Map、List 等）；</li>
+<li><strong>输出</strong>：模板与数据结合后生成 HTML、XML、文本等最终内容。</li>
+</ul>
+<h3 id="32-使用场景">3.2 使用场景</h3>
+<ul>
+<li>生成 HTML 页面：后端数据填充到 <code>.ftl</code> 模板生成用户界面；</li>
+<li>生成电子邮件：动态插入用户信息生成邮件正文；</li>
+<li>生成配置文件：按环境生成 XML、JSON、Properties；</li>
+<li>代码生成：由模板生成源代码、SQL 脚本等。</li>
+</ul>
+<h3 id="33-优点">3.3 优点</h3>
+<ul>
+<li><strong>分离逻辑与表现</strong>：模板专注展示，Java 代码专注业务；</li>
+<li><strong>灵活性高</strong>：支持条件判断、循环、宏等高级功能；</li>
+<li><strong>性能较好</strong>：模板解析渲染速度较快；</li>
+<li><strong>易于集成</strong>：可与 Spring 等主流框架无缝集成。</li>
+</ul>
+<h2 id="四web-相关自动配置">四、Web 相关自动配置</h2>
+<h3 id="41-viewresolver-自动配置">4.1 ViewResolver 自动配置</h3>
+<p>查看 <code>WebMvcAutoConfiguration</code> 与 <code>WebMvcProperties</code> 源码，可以看到 Spring Boot 提供的视图解析配置：</p>
+<ul>
+<li><strong>BeanNameViewResolver</strong>：Controller 方法返回字符串视图名时，按 Bean 名称查找对应的 View 来渲染；</li>
+<li><strong>InternalResourceViewResolver</strong>：常用的视图解析器，通过前缀、后缀与方法返回的视图名拼接出实际页面路径。</li>
+</ul>
+<h3 id="42-静态资源自动配置">4.2 静态资源自动配置</h3>
+<p><strong>类路径目录</strong>：类路径下 <code>/static</code>、<code>/public</code>、<code>/resources</code>、<code>/META-INF/resources</code> 目录中的静态文件直接映射为 <code>/**</code>，可通过 <code>http://localhost:8080/**</code> 访问。</p>
+<p><strong>WebJars</strong>：把常用脚本框架封装成 Jar 包，<code>/META-INF/resources/webjars/</code> 下的静态文件映射为 <code>/webjars/**</code>。</p>
+<h3 id="43-converter-与-formatter">4.3 Converter 与 Formatter</h3>
+<p>只要定义了 <code>Converter</code>、<code>GenericConverter</code>、<code>Formatter</code> 接口实现类的 Bean，这些 Bean 会自动注册到 Spring MVC 中。</p>
+<h3 id="44-httpmessageconverters">4.4 HttpMessageConverters</h3>
+<p>新增自定义 <code>HttpMessageConverter</code> 时，只需定义一个 <code>HttpMessageConverters</code> 类型的 Bean，在其中注册自定义转换器即可：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> HttpMessageConverters </span><span style="color:#6F42C1;--shiki-dark:#B392F0">customConverters</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    HttpMessageConverter&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">?</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> customConverter1 </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> CustomConverter1</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    HttpMessageConverter&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">?</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> customConverter2 </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> CustomConverter2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    return</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> HttpMessageConverters</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(customConverter1, customConverter2);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="45-静态首页">4.5 静态首页</h3>
+<p>把静态首页 <code>index.html</code> 放在以下任一目录，访问应用根路径时会直接映射：</p>
+<ul>
+<li><code>classpath:/META-INF/resources/index.html</code></li>
+<li><code>classpath:/resources/index.html</code></li>
+<li><code>classpath:/static/index.html</code></li>
+<li><code>classpath:/public/index.html</code></li>
+</ul>
+<h3 id="46-自定义静态资源与-webmvc-配置">4.6 自定义静态资源与 WebMvc 配置</h3>
+<ul>
+<li>静态资源映射可在 <code>application.yml</code> 中配置；</li>
+<li>需要额外 MVC 配置时，定义配置类并实现 <code>WebMvcConfigurer</code> 接口，覆盖对应方法即可。</li>
+</ul>
+<h3 id="47-接管-spring-boot-的-web-配置">4.7 接管 Spring Boot 的 Web 配置</h3>
+<ul>
+<li><strong>完全接管</strong>：默认 MVC 配置不满足需求时，配置类加 <code>@EnableWebMvc</code> 实现完全自控的 MVC 配置；</li>
+<li><strong>保留默认、追加配置（推荐）</strong>：不想覆盖 Spring Boot 自动配置时，实现 <code>WebMvcConfigurer</code> 接口补充自定义配置。重写的 <code>addViewControllers</code> 等方法不会覆盖 <code>WebMvcAutoConfiguration</code> 中的同名逻辑，自定义配置与自动配置同时生效。</li>
+</ul>
+<blockquote>
+<p>版本提示：早期教程中的 <code>WebMvcConfigurerAdapter</code> 在 Spring 5.0 已废弃，直接实现 <code>WebMvcConfigurer</code> 接口即可。</p>
+</blockquote>
+<h3 id="48-注册-servletfilterlistener">4.8 注册 Servlet、Filter、Listener</h3>
+<p>使用内嵌 Servlet 容器（Tomcat、Jetty）时，通过三个注册 Bean 把 Servlet、Filter、Listener 声明为 Spring Bean：</p>
+<ul>
+<li><code>ServletRegistrationBean</code>：注册 Servlet；</li>
+<li><code>FilterRegistrationBean</code>：注册 Filter；</li>
+<li><code>ServletListenerRegistrationBean</code>：注册 Listener。</li>
+</ul>
+<p><img src="/blog/spring-boot-web/spring-boot-web-02.png" alt="Web 自动配置总览"></p>
+<h2 id="五内嵌-tomcat-配置与替换">五、内嵌 Tomcat 配置与替换</h2>
+<h3 id="51-配置-tomcat">5.1 配置 Tomcat</h3>
+<p>Tomcat 相关属性定义在 <code>ServerProperties</code> 配置类中，在 <code>application.properties</code> / <code>application.yml</code> 配置即可。通用 Servlet 容器配置以 <code>server</code> 为前缀，Tomcat 特有属性以 <code>server.tomcat</code> 为前缀，例如端口、连接超时、访问路径等。</p>
+<h3 id="52-替换内嵌容器">5.2 替换内嵌容器</h3>
+<p>Spring Boot 默认使用 Tomcat。要换成 Jetty 或 Undertow，只需调整 <code>spring-boot-starter-web</code> 的依赖：排除默认的 <code>spring-boot-starter-tomcat</code>，引入对应的容器启动器（如 <code>spring-boot-starter-jetty</code>）。</p>
+<h2 id="六ssl-与-https-配置">六、SSL 与 HTTPS 配置</h2>
+<h3 id="61-基本概念">6.1 基本概念</h3>
+<p>SSL 是为网络通信提供安全与数据完整性的安全协议，位于 TCP/IP 协议与应用层之间，对网络连接加密。B/S 应用通过 HTTPS 实现 SSL，HTTPS 可以理解为 HTTP 下加入 SSL 层，安全基础是 SSL。</p>
+<p><img src="/blog/spring-boot-web/spring-boot-web-03.png" alt="SSL/HTTPS 协议栈位置"></p>
+<h3 id="62-生成自签名证书">6.2 生成自签名证书</h3>
+<p>使用 JDK 自带的 <code>keytool</code>（位于 JDK 的 <code>bin</code> 目录）生成自签名证书：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">keytool</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -genkey</span><span style="color:#005CC5;--shiki-dark:#79B8FF"> -alias</span><span style="color:#032F62;--shiki-dark:#9ECBFF"> tomcat</span></span></code></pre>
+<p>按提示操作后，当前目录会生成 <code>.keystore</code> 证书文件。</p>
+<h3 id="63-spring-boot-配置-ssl">6.3 Spring Boot 配置 SSL</h3>
+<p>把 <code>.keystore</code> 复制到项目根目录，在配置文件中指定证书类型、别名、密码与密钥库路径等，启动后即可通过 <code>https://</code> 访问。</p>
+<blockquote>
+<p>注意：自签名证书不被浏览器默认信任，仅用于本地开发测试；生产环境应使用受信任 CA 签发的证书。</p>
+</blockquote>
+<h3 id="64-http-跳转-https">6.4 HTTP 跳转 HTTPS</h3>
+<p>实现 HTTP 自动跳转 HTTPS，需要通过自定义 <code>ServletWebServerFactory</code> 添加一个 HTTP Connector 做重定向。启动类中配置的重定向端口要与配置文件中的端口一致，否则启动报错。</p>
+<h2 id="七mkcert-本地证书">七、mkcert 本地证书</h2>
+<p>mkcert 是用于生成本地受信任 SSL/TLS 证书的开源工具，简化本地开发环境的证书创建与管理。</p>
+<p><strong>主要功能</strong></p>
+<ul>
+<li><strong>零配置</strong>：自动把根证书安装到系统信任存储，生成本地可信任证书；</li>
+<li><strong>多域名/IP</strong>：支持多个域名与 IP 地址；</li>
+<li><strong>跨平台</strong>：支持 Linux、macOS、Windows；</li>
+<li><strong>高级功能</strong>：可生成客户端认证证书、ECDSA 密钥、PKCS#12 文件等。</li>
+</ul>
+<p><strong>适用场景</strong>：本地 Web 开发测试 HTTPS、API 测试模拟 HTTPS 请求、物联网设备安全通信测试。</p>
+<p><strong>注意事项</strong></p>
+<ul>
+<li>不要用于生产环境：生成的自签名证书不被公共浏览器信任，生产环境应使用受信任 CA 签发的证书；</li>
+<li>证书有效期较短（如 365 天），需要定期更新。</li>
+</ul>
+<h2 id="八证书格式与-java-trust-store">八、证书格式与 Java Trust Store</h2>
+<h3 id="81-pem-文件">8.1 PEM 文件</h3>
+<p>PEM（Privacy-Enhanced Mail）是常用的证书与密钥格式，存储加密证书、私钥、公钥或证书链。它是 ASCII 文本格式，通常以 Base64 编码表示，便于网络传输。</p>
+<p><strong>基本结构</strong>：标头（标识数据块类型）+ Base64 编码内容 + 尾部（标记结束）。常见标记：</p>
+<ul>
+<li>证书：<code>-----BEGIN CERTIFICATE-----</code> / <code>-----END CERTIFICATE-----</code>；</li>
+<li>私钥：<code>-----BEGIN PRIVATE KEY-----</code> / <code>-----END PRIVATE KEY-----</code>；</li>
+<li>公钥：<code>-----BEGIN PUBLIC KEY-----</code> / <code>-----END PUBLIC KEY-----</code>；</li>
+<li>证书链：多个证书块串联，首块为服务器证书，后续为 CA 签发的中间证书或根证书。</li>
+</ul>
+<p><strong>用途</strong>：SSL/TLS 证书存储、公钥/私钥存放、证书链管理。</p>
+<h3 id="82-pem--der--pkcs12-区别">8.2 PEM / DER / PKCS#12 区别</h3>
+<table>
+<thead>
+<tr>
+<th>格式</th>
+<th>特点</th>
+<th>典型用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PEM</td>
+<td>Base64 编码，人类可读文本，有明确起止标记，常用于 Linux/Unix</td>
+<td>传输证书与密钥</td>
+</tr>
+<tr>
+<td>DER</td>
+<td>PEM 的二进制版本，直接存储二进制数据</td>
+<td>非文本环境存储</td>
+</tr>
+<tr>
+<td>PKCS#12（<code>.pfx</code>/<code>.p12</code>）</td>
+<td>存储证书与私钥组合，支持加密保护</td>
+<td>密钥与证书交换，尤其 Windows 系统</td>
+</tr>
+</tbody>
+</table>
+<h3 id="83-java-trust-store">8.3 Java Trust Store</h3>
+<p>Java 的 Trust Store 用于存储受信任证书，验证与远程服务 SSL/TLS 通信时的证书链。Java 默认使用 <code>cacerts</code> 文件，内置广泛信任的根证书，路径与 JDK/JRE 安装位置相关：</p>
+<ul>
+<li>Linux/macOS：<code>$JAVA_HOME/lib/security/cacerts</code>；</li>
+<li>Windows：<code>$JAVA_HOME/jre/lib/security/cacerts</code>（新版本 JDK 路径为 <code>$JAVA_HOME/lib/security/cacerts</code>）。</li>
+</ul>
+<p><code>cacerts</code> 是一个 keystore 文件，存储知名 CA（如 DigiCert 等）的根证书，用于校验服务器证书有效性。</p>
+<h2 id="九小结">九、小结</h2>
+<ul>
+<li><code>starter-web</code> 带来内嵌容器与 Spring MVC，Web 自动配置集中在 <code>autoconfigure.web</code> 包下；</li>
+<li>模板引擎首选 Thymeleaf，Spring Boot 通过 <code>ThymeleafAutoConfiguration</code> 完成自动装配；FreeMarker 适合生成 HTML、邮件、配置文件与代码；</li>
+<li>Web 自动配置覆盖视图解析、静态资源、Converter/Formatter、消息转换器与静态首页；保留默认配置时实现 <code>WebMvcConfigurer</code> 追加自定义项；</li>
+<li>内嵌容器可在 Tomcat、Jetty、Undertow 间替换；SSL/HTTPS 用于加密传输，本地开发可用 mkcert 生成受信任证书；</li>
+<li>证书格式分 PEM（文本）、DER（二进制）、PKCS#12（证书+私钥组合），Java 通过 <code>cacerts</code> 校验远端证书链。</li>
+</ul>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-web/">https://zhanzhenguan.github.io/blog/spring-boot-web/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-basics/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</div> </a> <a class="next" href="/blog/wechat-pay/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">微信支付实战：接入准备、Native 下单、回调通知与退款全流程</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS","description":"整理 Spring Boot Web 开发要点：starter-web 与自动配置包、Thymeleaf/FreeMarker 模板引擎、ViewResolver 与静态资源、Converter/MessageConverter、接管 Web 配置、注册 Servlet/Filter/Listener、内嵌 Tomcat 配置与替换、SSL/HTTPS 与证书格式。","datePublished":"2026-11-27T00:00:00.000Z","dateModified":"2026-11-27T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-web/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>

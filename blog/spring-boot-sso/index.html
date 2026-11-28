@@ -1,0 +1,602 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="整理 Keycloak 作为身份提供方、Spring Security OAuth2 Client 完成浏览器端 OIDC 登录、Resource Server 校验 Access Token 的 SSO 体系：SSO 概念澄清、授权码流程、组件架构、Keycloak 启动与 Realm 客户端配置、角色映射、本地 Session 与登出、API 资源服务器验签，以及 PKCE/BFF 等前后端分离要点。"><meta name="theme-color" content="#f5f6f8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="alternate" type="application/rss+xml" title="zane 的博客" href="/rss.xml"><!-- Open Graph / SEO --><meta property="og:type" content="website"><meta property="og:title" content="Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签"><meta property="og:description" content="整理 Keycloak 作为身份提供方、Spring Security OAuth2 Client 完成浏览器端 OIDC 登录、Resource Server 校验 Access Token 的 SSO 体系：SSO 概念澄清、授权码流程、组件架构、Keycloak 启动与 Realm 客户端配置、角色映射、本地 Session 与登出、API 资源服务器验签，以及 PKCE/BFF 等前后端分离要点。"><meta property="og:url" content="https://zhanzhenguan.github.io/blog/spring-boot-sso/"><meta name="twitter:card" content="summary"><!-- 主题初始化：在渲染前读取，避免浅色/暗色闪烁 --><script>
+      (function () {
+        var t;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script><!-- Pagefind 搜索组件 UI --><link rel="stylesheet" href="/pagefind/pagefind-component-ui.css"><script src="/pagefind/pagefind-component-ui.js" type="module"></script><title>Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</title><link rel="stylesheet" href="/_astro/about.BCs8kJGe.css"></head> <body> <div class="progress-bar" id="progress-bar"></div> <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div> <header class="site-header"> <nav class="site-nav" data-pagefind-ignore> <a class="brand" href="/">⚡ zane</a> <div class="nav-links" id="nav-links"> <a href="/">首页</a> <a href="/categories/">分类</a> <a href="/archive/">归档</a> <a href="/tags/">标签</a> <a href="/about/">关于</a> </div> <div class="nav-right"> <span class="nav-search"> <pagefind-modal-trigger></pagefind-modal-trigger> </span> <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换浅色/暗色主题" title="切换主题" data-astro-cid-x3pjskd3> <span class="icon-dark" data-astro-cid-x3pjskd3>🌙</span> <span class="icon-light" data-astro-cid-x3pjskd3>☀️</span> </button> <script type="module">const t=document.getElementById("theme-toggle"),n=document.documentElement;function o(e){t&&(t.querySelector(".icon-dark").style.display=e==="dark"?"none":"inline",t.querySelector(".icon-light").style.display=e==="dark"?"inline":"none")}o(n.dataset.theme||"light");t?.addEventListener("click",()=>{const e=n.dataset.theme==="dark"?"light":"dark";n.dataset.theme=e;try{localStorage.setItem("theme",e)}catch{}o(e)});</script>  <button class="nav-toggle" id="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false">☰</button> </div> </nav> </header> <main>  <nav class="breadcrumb" aria-label="面包屑"> <a href="/">首页</a>  <span class="sep">/</span> <a href="/categories/spring-boot/">Spring Boot</a>  <span class="sep">/</span> <span class="current">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</span> </nav> <div class="post-layout"> <article class="post-article" data-pagefind-body> <header class="post-header"> <h1>Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</h1> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026年11月28日</time>  <span>· 约 13 分钟</span> <span>· 4012 字</span> <span class="meta-tags"> <a class="tag" href="/tags/spring-boot/">#Spring Boot</a><a class="tag" href="/tags/java/">#Java</a><a class="tag" href="/tags/sso/">#SSO</a><a class="tag" href="/tags/oidc/">#OIDC</a><a class="tag" href="/tags/keycloak/">#Keycloak</a><a class="tag" href="/tags/e778d61a/">#后端</a> </span> </div> </header>  <div class="series-box"> <div class="series-name">📖 系列：Spring Boot 学习笔记</div> <ol> <li><a href="/blog/spring-boot-basics/">Spring Boot 基础与核心：概念、配置、Starter 原理与启动流程</a></li><li><a href="/blog/spring-boot-web/">Spring Boot Web 开发：模板引擎、Web 自动配置、内嵌容器与 HTTPS</a></li><li><a href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a></li><li><a href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a></li><li><a href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a></li><li><a href="/blog/spring-boot-data/">Spring Boot 数据访问：整合 H2 内存库与 Druid 数据源</a></li><li><a href="/blog/spring-boot-flowable/">Spring Boot 3 整合 Flowable 7.2：请假审批流程、BPMN 部署、幂等发起与历史轨迹</a></li><li><a href="/blog/spring-boot-jwt/">Spring Boot 3 整合 JWT：无状态认证链、401/403 统一响应与 Token 生命周期</a></li><li><a href="/blog/spring-boot-kafka/">Spring Boot 3 整合 Kafka：KRaft 启动、可靠性配置、重试死信队列与消费幂等</a></li><li><a href="/blog/spring-boot-minio/">Spring Boot 3 整合 MinIO：私有桶预签名外链、上传下载删除与对象名校验</a></li><li><a href="/blog/spring-boot-mongodb/">Spring Boot 数据访问：整合 MongoDB 文档数据库</a></li><li><a href="/blog/spring-boot-mqtt5/">Spring Boot 3 整合 MQTT 5：Spring Integration 共享连接、订阅发布与 Retained/LWT 状态闭环</a></li><li><a href="/blog/spring-boot-mybatis/">Spring Boot 数据访问：整合 MyBatis、MyBatis-Plus 与动态数据源</a></li><li><a href="/blog/spring-boot-netty/">Spring Boot 3 整合 Netty 4.2：TCP 长度帧协议、SmartLifecycle 启停与心跳检测</a></li><li><a href="/blog/spring-boot-prometheus/">Spring Boot 3 整合 Prometheus：Micrometer 指标暴露、抓取入库、PromQL 与 Grafana 面板</a></li><li><a href="/blog/spring-boot-rabbitmq/">Spring Boot 整合 RabbitMQ：生产者消费者、Topic 路由与消息可靠性</a></li><li><a href="/blog/spring-boot-redis/">Spring Boot 整合 Redis：Template、缓存抽象、Lua 限流与序列化</a></li><li><a href="/blog/spring-boot-redisson/">Spring Boot 整合 Redisson：分布式对象、分布式锁与看门狗</a></li><li><a href="/blog/spring-boot-rocketmq4/">Spring Boot 2.7 整合 RocketMQ 4.x：版本选型、五种发送方式、事务消息与幂等消费</a></li><li><a href="/blog/spring-boot-rocketmq5/">Spring Boot 3 整合 RocketMQ 5.x：四类消息、幂等消费与事务消息</a></li><li><a href="/blog/spring-boot-security/">Spring Boot 3 整合 Spring Security：RBAC 模型、JWT 无状态认证与方法级权限</a></li><li><a href="/blog/spring-boot-sharding/">Spring Boot 分库分表：ShardingSphere-JDBC 概念、分片策略与接入</a></li><li><a href="/blog/spring-boot-shiro/">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</a></li><li class="current">Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签（本文）</li><li><a href="/blog/spring-boot-swagger/">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</a></li><li><a href="/blog/spring-boot-websocket/">Spring Boot 整合 WebSocket：STOMP 广播/点对点聊天室与连接生命周期</a></li> </ol> </div> <p>这篇是 Spring Boot 系列第十六部分，搭建「统一身份认证中心 + 多个业务系统」的 SSO 环境：用 Keycloak 当身份提供方，Spring Security OAuth2 Client 完成浏览器端 OIDC 登录，单独跑一个 Resource Server 验证后端 API 如何校验 Keycloak 签发的 Access Token。两个业务系统共用一套代码、同一个 Keycloak Realm，用户登录一次即可在系统间切换。技术栈：Spring Boot 3.5.16、Spring Security 6.5.11、Keycloak 26.8.2、JDK 17。代码为通用示例，密钥与地址用占位符。</p>
+<h2 id="一sso-解决什么问题">一、SSO 解决什么问题</h2>
+<h3 id="11-一次登录多系统通行">1.1 一次登录，多系统通行</h3>
+<p>没有 SSO 时，企业内部 OA、CRM、ERP 各一套账号密码、登录三次；接入 SSO 后，各系统信任同一个身份中心，用户在中心登录一次，其它系统直接放行。</p>
+<h3 id="12-传统登录与-sso-的差别">1.2 传统登录与 SSO 的差别</h3>
+<table>
+<thead>
+<tr>
+<th>对比项</th>
+<th>传统独立登录</th>
+<th>SSO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>账号管理</td>
+<td>每个系统各自维护</td>
+<td>身份中心集中管理或联邦认证</td>
+</tr>
+<tr>
+<td>登录入口</td>
+<td>多个登录页</td>
+<td>统一认证入口</td>
+</tr>
+<tr>
+<td>密码策略</td>
+<td>各系统各一套</td>
+<td>统一密码策略、MFA、账号生命周期</td>
+</tr>
+<tr>
+<td>登录体验</td>
+<td>切换系统可能重复登录</td>
+<td>中心会话有效时无需再输入密码</td>
+</tr>
+<tr>
+<td>权限体系</td>
+<td>各系统自管</td>
+<td>认证集中，业务权限仍分系统授权</td>
+</tr>
+<tr>
+<td>审计</td>
+<td>日志分散</td>
+<td>认证事件集中可审计</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13-概念澄清sso-不是-jwt也不是-redis-共享-session">1.3 概念澄清：SSO 不是 JWT，也不是 Redis 共享 Session</h3>
+<ul>
+<li><strong>JWT</strong> 只是一种令牌格式，SSO 可以用 JWT，也可以不用；</li>
+<li><strong>Redis 共享 Session</strong> 解决的是「同一应用多实例之间会话共享」，跟跨系统认证没有关系；</li>
+<li><strong>SSO</strong> 是一套跨应用的身份认证协议与会话协作机制，主流实现是 OIDC（现代 Web）或 SAML 2.0（遗留系统）。</li>
+</ul>
+<p>不要把「把 Session 塞进 Redis」当成 SSO 方案，也不要用「复制 JSESSIONID」这种方式伪造单点登录。</p>
+<h2 id="二版本基线与技术选型">二、版本基线与技术选型</h2>
+<h3 id="21-版本矩阵">2.1 版本矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>版本</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JDK</td>
+<td>17</td>
+<td>Spring Boot 3.5 运行时要求</td>
+</tr>
+<tr>
+<td>Spring Boot</td>
+<td>3.5.16</td>
+<td>父 POM 统一管理依赖版本</td>
+</tr>
+<tr>
+<td>Spring Security</td>
+<td>6.5.11</td>
+<td>由 Boot BOM 管理，不要手动指定</td>
+</tr>
+<tr>
+<td>Keycloak</td>
+<td>26.8.2</td>
+<td>身份提供方，需要 Java 21+ 运行</td>
+</tr>
+<tr>
+<td>Maven</td>
+<td>3.9.3</td>
+<td>多模块构建</td>
+</tr>
+</tbody>
+</table>
+<p>Spring Boot BOM 已管好 Spring Security 版本，自己再写 <code>&#x3C;version></code> 容易出现版本错配（如 Security 6.4 配 Boot 3.5 的 API）。</p>
+<h3 id="22-为什么选-oidc-而不是自研-token">2.2 为什么选 OIDC 而不是自研 Token</h3>
+<p>自研「登录发 Token、网关校验 Token」也能跑，但会立刻遇到一串问题：Token 怎么签名、密钥怎么轮换、授权码怎么防重放、state 和 nonce 怎么校验、SPA 和移动端怎么接、怎么对接企业 AD。OIDC 把这些都标准化了，Spring Security 也把客户端侧实现做完了（发起授权、校验 state/nonce、换 Token、验签 ID Token）。<strong>应用侧要做的只剩下配置和业务权限映射。</strong></p>
+<h3 id="23-授权码流程authorization-code-flow">2.3 授权码流程（Authorization Code Flow）</h3>
+<p>服务端 Web 应用一律用授权码流程：</p>
+<ol>
+<li>浏览器访问受保护页面，应用返回 302，跳到 Keycloak 授权端点；</li>
+<li>用户在 Keycloak 页面输入账号密码；</li>
+<li>Keycloak 把浏览器重定向回应用的 <code>redirect_uri</code>，URL 上带一个一次性授权码 <code>code</code>；</li>
+<li>应用后端拿 <code>code</code> 走服务端通道去 Token 端点换 <code>ID Token</code> + <code>Access Token</code>；</li>
+<li>应用校验 ID Token，建立自己的本地 Session。</li>
+</ol>
+<p>密码只提交给身份中心，业务应用永远接触不到用户密码；<code>code</code> 即使被截获，没有客户端密钥也换不到 Token。这就是服务端应用使用 Confidential Client（带 Client Secret）的原因。Implicit Flow（Token 直接放 URL 片段返回）已明确不推荐，新系统不要用。</p>
+<p><img src="/blog/spring-boot-sso/spring-boot-sso-02.png" alt="授权码流程时序"></p>
+<h2 id="三整体架构与请求链路">三、整体架构与请求链路</h2>
+<h3 id="31-组件与端口">3.1 组件与端口</h3>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>端口</th>
+<th>角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Keycloak</td>
+<td>8180</td>
+<td>身份提供方（IdP / OP），维护 SSO 会话、签发 Token</td>
+</tr>
+<tr>
+<td>App-A</td>
+<td>8081</td>
+<td>OIDC 客户端（Relying Party），client_id = app-a</td>
+</tr>
+<tr>
+<td>App-B</td>
+<td>8082</td>
+<td>OIDC 客户端，client_id = app-b</td>
+</tr>
+<tr>
+<td>API 服务</td>
+<td>8083</td>
+<td>Resource Server，校验 Access Token</td>
+</tr>
+</tbody>
+</table>
+<p>App-A 与 App-B 是<strong>两个独立的客户端身份</strong>，各有自己的 Client Secret 和回调地址。它们不共享 JSESSIONID，共享的是 Keycloak 端那份登录会话。</p>
+<p><img src="/blog/spring-boot-sso/spring-boot-sso-01.png" alt="SSO 整体拓扑"></p>
+<h3 id="32-两次访问的时序">3.2 两次访问的时序</h3>
+<ul>
+<li><strong>首次登录</strong>：浏览器 → App-A 未认证 → 302 跳 Keycloak → 登录 → 回调 App-A → 换 Token → 建本地 Session；</li>
+<li><strong>第二个应用访问</strong>：同一浏览器打开 App-B → 未带本地 Session → 跳 Keycloak → 浏览器携带 Keycloak SSO Cookie，中心会话仍有效 → 直接回调 App-B 建立本地 Session，不再要密码。</li>
+</ul>
+<h2 id="四启动-keycloak-身份中心">四、启动 Keycloak 身份中心</h2>
+<h3 id="41-两种运行方式">4.1 两种运行方式</h3>
+<ul>
+<li><strong>Docker Compose</strong>：最省事，适合有 Docker 的环境；</li>
+<li><strong>官方发行包 + Java</strong>：适合本机没有 Docker 的情况。</li>
+</ul>
+<p>Compose 片段（三注意）：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">services</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  keycloak</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    image</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">quay.io/keycloak/keycloak:26.8.2</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    command</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"start-dev"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"--import-realm"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    environment</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      KEYCLOAK_ADMIN</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">admin</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      KEYCLOAK_ADMIN_PASSWORD</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${KC_ADMIN_PASSWORD:change-me}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    ports</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      - </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"127.0.0.1:8180:8080"</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    volumes</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">      - </span><span style="color:#032F62;--shiki-dark:#9ECBFF">./data/import:/opt/keycloak/data/import</span></span></code></pre>
+<ol>
+<li><code>--import-realm</code> 让 Keycloak 启动时自动导入 <code>data/import/</code> 下的 Realm 文件，省掉手工建用户、建客户端；</li>
+<li>端口映射写成 <code>127.0.0.1:8180:8080</code>，只绑回环地址，管理端口不暴露到局域网；</li>
+<li><code>start-dev</code> 只能用于本地开发，生产必须用 <code>start</code> 模式 + 外部数据库 + HTTPS。</li>
+</ol>
+<p>发行包方式：Keycloak 26.x 需要 Java 21 及以上版本。</p>
+<h3 id="42-验证-discovery-元数据">4.2 验证 Discovery 元数据</h3>
+<p>OIDC 元数据地址是 <code>{issuer}/.well-known/openid-configuration</code>，Spring Security 靠它自动发现各端点。</p>
+<p><strong>这里的 <code>issuer</code> 必须和应用配置里的 <code>issuer-uri</code> 完全一致</strong>，包括协议、主机名、端口。浏览器访问用 <code>localhost</code>、应用配置写 <code>127.0.0.1</code>，就会报 issuer 不匹配。</p>
+<h2 id="五realm用户角色与客户端">五、Realm、用户、角色与客户端</h2>
+<h3 id="51-概念划分">5.1 概念划分</h3>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>说明</th>
+<th>本示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Realm</td>
+<td>租户 / 认证域，用户、客户端、角色都归属其中</td>
+<td><code>demo</code></td>
+</tr>
+<tr>
+<td>User</td>
+<td>登录用户</td>
+<td><code>demo-user</code>（USER）、<code>admin-user</code>（USER + ADMIN）</td>
+</tr>
+<tr>
+<td>Realm Role</td>
+<td>Realm 级角色</td>
+<td><code>USER</code>、<code>ADMIN</code></td>
+</tr>
+<tr>
+<td>Client</td>
+<td>接入的客户端应用</td>
+<td><code>app-a</code>、<code>app-b</code>、<code>api-cli</code></td>
+</tr>
+<tr>
+<td>SSO Session</td>
+<td>Keycloak 维护的登录会话</td>
+<td>浏览器 Cookie 承载</td>
+</tr>
+</tbody>
+</table>
+<p>Realm 导入文件里 <code>"temporary": false</code> 很重要：设成 <code>true</code> 时用户首次登录会被强制改密码，自动化测试和演示都会卡住。</p>
+<h3 id="52-客户端参数">5.2 客户端参数</h3>
+<p>App-A / App-B 的差异只在 Client ID、Secret、端口和回调地址：</p>
+<table>
+<thead>
+<tr>
+<th>配置项</th>
+<th>App-A</th>
+<th>App-B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Client ID</td>
+<td><code>app-a</code></td>
+<td><code>app-b</code></td>
+</tr>
+<tr>
+<td>Client authentication</td>
+<td>On（机密客户端）</td>
+<td>On</td>
+</tr>
+<tr>
+<td>Standard flow</td>
+<td>On</td>
+<td>On</td>
+</tr>
+<tr>
+<td>Direct access grants</td>
+<td>Off</td>
+<td>Off</td>
+</tr>
+<tr>
+<td>Root URL</td>
+<td><code>http://localhost:8081</code></td>
+<td><code>http://localhost:8082</code></td>
+</tr>
+<tr>
+<td>Valid redirect URIs</td>
+<td><code>http://localhost:8081/login/oauth2/code/keycloak</code></td>
+<td><code>http://localhost:8082/login/oauth2/code/keycloak</code></td>
+</tr>
+<tr>
+<td>Valid post logout redirect URIs</td>
+<td><code>http://localhost:8081/*</code></td>
+<td><code>http://localhost:8082/*</code></td>
+</tr>
+<tr>
+<td>Web origins</td>
+<td><code>http://localhost:8081</code></td>
+<td><code>http://localhost:8082</code></td>
+</tr>
+</tbody>
+</table>
+<p>回调地址是<strong>精确匹配</strong>：协议、域名、端口、路径任一处不同都会被 Keycloak 拒绝，返回 <code>Invalid parameter: redirect_uri</code>；通配符能用但生产环境不建议开太大。</p>
+<p>另有一个 <code>api-cli</code> 客户端，只用来在本地用密码模式换 Access Token 调 API（<code>directAccessGrantsEnabled: true</code>）。<strong>生产环境不要开这种客户端</strong>，它是给测试脚本用的。</p>
+<h3 id="53-让-realm-role-进入-id-token">5.3 让 Realm Role 进入 ID Token</h3>
+<p>Keycloak 默认把 Realm Role 放在 <code>realm_access.roles</code> 里，但<strong>不一定写进 ID Token</strong>。浏览器端应用从 ID Token 读身份，所以要在客户端上显式加一个协议映射：<code>rolePrefix</code> 留空——Spring 侧的 <code>ROLE_</code> 前缀由自己的代码加，重复加会变成 <code>ROLE_ROLE_ADMIN</code>。</p>
+<p>配置完必须<strong>先看实际签发的 Token 声明</strong>再写映射代码。</p>
+<h2 id="六spring-boot-客户端工程">六、Spring Boot 客户端工程</h2>
+<h3 id="61-依赖">6.1 依赖</h3>
+<p>只需要 OAuth2 Client 这一个 Starter。<strong>不需要</strong>旧版 Keycloak Adapter，也不需要自己写授权码交换逻辑——<code>spring-boot-starter-oauth2-client</code> 已经把 OIDC 客户端做完了。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-oauth2-client&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-security&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<h3 id="62-applicationyml">6.2 application.yml</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  security</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    oauth2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      client</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        registration</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">          keycloak</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            client-id</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${OIDC_CLIENT_ID:app-a}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            client-secret</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${OIDC_CLIENT_SECRET:change-me}</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            authorization-grant-type</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">authorization_code</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            redirect-uri</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"{baseUrl}/login/oauth2/code/{registrationId}"</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            scope</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">openid</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        provider</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">          keycloak</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">            issuer-uri</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">http://localhost:8180/realms/demo</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">server</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  servlet</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    session</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      cookie</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        name</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">${SESSION_COOKIE_NAME:APP_A_SESSION}</span></span></code></pre>
+<p>三个容易踩的点：</p>
+<ol>
+<li><strong><code>redirect-uri</code> 用 <code>{baseUrl}</code> 占位</strong>，不要写死 <code>http://localhost:8081/...</code>；走反向代理时 <code>{baseUrl}</code> 按请求推导，写死会直接错；</li>
+<li><strong><code>scope</code> 必须有 <code>openid</code></strong>，没有它就不是 OIDC 流程，拿不到 ID Token；</li>
+<li><strong><code>server.servlet.session.cookie.name</code> 必须每个应用不同</strong>。</li>
+</ol>
+<h3 id="63-同一份代码跑两个应用">6.3 同一份代码跑两个应用</h3>
+<p>App-A 和 App-B 业务逻辑完全一样，差别只有四个环境变量：</p>
+<table>
+<thead>
+<tr>
+<th>环境变量</th>
+<th>App-A</th>
+<th>App-B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SERVER_PORT</code></td>
+<td>8081</td>
+<td>8082</td>
+</tr>
+<tr>
+<td><code>OIDC_CLIENT_ID</code></td>
+<td>app-a</td>
+<td>app-b</td>
+</tr>
+<tr>
+<td><code>OIDC_CLIENT_SECRET</code></td>
+<td>app-a-secret-2026</td>
+<td>app-b-secret-2026</td>
+</tr>
+<tr>
+<td><code>SESSION_COOKIE_NAME</code></td>
+<td>APP_A_SESSION</td>
+<td>APP_B_SESSION</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 Cookie 名要区分？</strong> 浏览器 Cookie <strong>不区分端口</strong>。App-A 和 App-B 都在 <code>localhost</code> 上，如果都用默认 <code>JSESSIONID</code>，后登录的应用会把前一个应用的会话 Cookie 覆盖掉，表现为「登录了 A，打开 B 又要登录」「来回跳转」「会话串号」。部署到不同域名不会有这个问题，但本地演示必须有这个配置。</p>
+<h2 id="七security-oauth2-login">七、Security OAuth2 Login</h2>
+<h3 id="71-配置要点">7.1 配置要点</h3>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">EnableMethodSecurity</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SecurityConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SecurityFilterChain </span><span style="color:#6F42C1;--shiki-dark:#B392F0">filterChain</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(HttpSecurity </span><span style="color:#E36209;--shiki-dark:#FFAB70">http</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">throws</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Exception {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        http.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">authorizeHttpRequests</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(auth </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> auth</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                        .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">requestMatchers</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, </span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/login"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">permitAll</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                        .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">requestMatchers</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/admin/**"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">hasRole</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"ADMIN"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                        .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">anyRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">authenticated</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">oauth2Login</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(oauth </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> oauth</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                        .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">userInfoEndpoint</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(info </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> info.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">userAuthoritiesMapper</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">roleMapper</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())));</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> GrantedAuthoritiesMapper </span><span style="color:#6F42C1;--shiki-dark:#B392F0">roleMapper</span><span style="color:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> OidcAuthoritiesMapper</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>授权失败时框架默认走 <code>sendError(403)</code>，浏览器看到 Whitelabel 兜底页；第九节用 <code>AccessDeniedHandler</code> 改成标准 JSON 响应。</p>
+<h3 id="72-spring-security-内置的四个端点">7.2 Spring Security 内置的四个端点</h3>
+<table>
+<thead>
+<tr>
+<th>端点</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /oauth2/authorization/keycloak</code></td>
+<td>发起授权请求（<code>keycloak</code> 是 registrationId）</td>
+</tr>
+<tr>
+<td><code>GET /login/oauth2/code/keycloak</code></td>
+<td>授权回调地址，必须与 Keycloak 侧登记一致</td>
+</tr>
+<tr>
+<td><code>GET /login</code></td>
+<td>默认登录页</td>
+</tr>
+<tr>
+<td><code>POST /logout</code></td>
+<td>本地登出，默认要求 POST + CSRF Token</td>
+</tr>
+</tbody>
+</table>
+<p>不需要自己写登录接口，直接访问 <code>/oauth2/authorization/keycloak</code> 就会跳转到 Keycloak。</p>
+<h3 id="73-千万别设成-stateless">7.3 千万别设成 STATELESS</h3>
+<p>浏览器端 SSO 客户端里加 <code>sessionCreationPolicy(STATELESS)</code> 会直接坏掉。原因：OIDC 登录完成后，应用需要<strong>自己的本地 Session</strong> 记住「这个浏览器已经认证过」，后续每次请求靠 Cookie 恢复认证上下文；设成无状态，等于每次请求都要重新走一遍 OIDC 流程，表现为无限重定向登录页。</p>
+<blockquote>
+<p>一句话：<strong>纯 JWT API 用无状态，浏览器 Web 应用用 Session。</strong></p>
+</blockquote>
+<h2 id="八把-keycloak-角色映射成-spring-权限">八、把 Keycloak 角色映射成 Spring 权限</h2>
+<h3 id="81-角色声明位置">8.1 角色声明位置</h3>
+<table>
+<thead>
+<tr>
+<th>角色类型</th>
+<th>Token 中的位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Realm Role</td>
+<td><code>realm_access.roles</code></td>
+</tr>
+<tr>
+<td>Client Role</td>
+<td><code>resource_access.{clientId}.roles</code></td>
+</tr>
+</tbody>
+</table>
+<p>Spring Security <strong>不会</strong>自动把 <code>realm_access.roles</code> 转成 <code>ROLE_ADMIN</code>。不做映射，<code>hasRole("ADMIN")</code> 永远返回 false，接口一直 403。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> OidcAuthoritiesMapper</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> GrantedAuthoritiesMapper</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Collection&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">?</span><span style="color:#D73A49;--shiki-dark:#F97583"> extends</span><span style="color:#D73A49;--shiki-dark:#F97583"> GrantedAuthority</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> </span><span style="color:#6F42C1;--shiki-dark:#B392F0">mapAuthorities</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(Collection&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">?</span><span style="color:#D73A49;--shiki-dark:#F97583"> extends</span><span style="color:#D73A49;--shiki-dark:#F97583"> GrantedAuthority</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> </span><span style="color:#E36209;--shiki-dark:#FFAB70">authorities</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        Set&#x3C;</span><span style="color:#D73A49;--shiki-dark:#F97583">GrantedAuthority</span><span style="color:#24292E;--shiki-dark:#E1E4E8">> mapped </span><span style="color:#D73A49;--shiki-dark:#F97583">=</span><span style="color:#D73A49;--shiki-dark:#F97583"> new</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> LinkedHashSet&#x3C;>();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        authorities.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">forEach</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(a </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> mapped.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">add</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(a));</span></span>
+<span class="line"><span style="color:#6A737D;--shiki-dark:#6A737D">        // 从 ID Token / UserInfo 的 realm_access.roles 提取角色，转成 ROLE_ 前缀</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> mapped;</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>四个细节：</p>
+<ol>
+<li>用 <code>LinkedHashSet</code> 而不是 <code>HashSet</code>，保留原始权限顺序，调试输出更可读；</li>
+<li>ID Token 和 UserInfo <strong>两处都查</strong>，不同 Keycloak 映射配置下角色可能只出现在其中一处；</li>
+<li><code>getUserInfo()</code> 要判空，某些配置下不会调用 UserInfo 端点，直接取值会 NPE；</li>
+<li>角色名 <code>toUpperCase()</code>，保证 <code>admin</code> 和 <code>ADMIN</code> 都能匹配 <code>hasRole("ADMIN")</code>。</li>
+</ol>
+<h3 id="82-一个真实踩到的坑oidcusergetauthorities-不是最终权限">8.2 一个真实踩到的坑：<code>OidcUser#getAuthorities()</code> 不是最终权限</h3>
+<p><code>OidcUser#getAuthorities()</code> 返回的是 OIDC 服务生成的<strong>原始权限</strong>；经过 <code>GrantedAuthoritiesMapper</code> 转换后的权限挂在 <code>Authentication</code> 上，真正参与授权判断的是后者。排查权限问题时，<strong>永远先看 <code>Authentication#getAuthorities()</code></strong>。</p>
+<h2 id="九用户信息接口与权限控制">九、用户信息接口与权限控制</h2>
+<h3 id="91-两个注意点">9.1 两个注意点</h3>
+<ol>
+<li><strong><code>@AuthenticationPrincipal</code> 不能省</strong>。写成 <code>me(OidcUser oidcUser)</code> 时，Spring MVC 会把它当普通模型属性绑定，直接抛 <code>No primary or single unique constructor found for interface OidcUser</code>，接口 500；</li>
+<li><strong>用户唯一标识用 <code>sub</code></strong>，不要用 email 或姓名。邮箱会改、姓名会重名，<code>sub</code> 才稳定；拿到 <code>sub</code> 后与本地用户表建立映射关系。</li>
+</ol>
+<h3 id="92-权限控制两处都要做">9.2 权限控制两处都要做</h3>
+<p>URL 规则做粗粒度，方法注解做细粒度：<code>hasRole("ADMIN")</code> 匹配 <code>ROLE_ADMIN</code>；<code>hasAuthority("report:read")</code> 才是精确匹配。权限必须在服务端校验，前端隐藏按钮只是体验优化。</p>
+<h3 id="93-授权失败统一返回-json">9.3 授权失败统一返回 JSON</h3>
+<p>403 虽然状态码正确，但页面往往是 Whitelabel 兜底页。原因是<strong>授权校验发生在两个不同位置，需要两套机制分别处理</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>校验位置</th>
+<th>异常在哪抛</th>
+<th>谁来处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL 规则（<code>/admin/**</code>）</td>
+<td>Security 过滤器链，早于 DispatcherServlet</td>
+<td><code>AccessDeniedHandler</code></td>
+</tr>
+<tr>
+<td>方法注解（<code>@PreAuthorize</code>）</td>
+<td>控制器方法调用时</td>
+<td><code>@RestControllerAdvice</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>@RestControllerAdvice</code> 只能捕获后者。前者的异常框架默认交给 <code>AccessDeniedHandlerImpl</code>，它调用 <code>response.sendError(403)</code>，容器随即转发到 <code>/error</code>；项目没配错误视图就渲染成 Whitelabel 页。</p>
+<p>自己实现 <code>AccessDeniedHandler</code>，直接写出响应体，不再走 <code>sendError</code>，也就不会再转发到 <code>/error</code>：</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Component</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> RestAccessDeniedHandler</span><span style="color:#D73A49;--shiki-dark:#F97583"> implements</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> AccessDeniedHandler</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Override</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#D73A49;--shiki-dark:#F97583"> void</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> handle</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(HttpServletRequest </span><span style="color:#E36209;--shiki-dark:#FFAB70">request</span><span style="color:#24292E;--shiki-dark:#E1E4E8">, HttpServletResponse </span><span style="color:#E36209;--shiki-dark:#FFAB70">response</span><span style="color:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                       AccessDeniedException </span><span style="color:#E36209;--shiki-dark:#FFAB70">e</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">throws</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> IOException {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        response.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setStatus</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(HttpServletResponse.SC_FORBIDDEN);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        response.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setContentType</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"application/json;charset=UTF-8"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        response.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">getWriter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">write</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"{</span><span style="color:#005CC5;--shiki-dark:#79B8FF">\"</span><span style="color:#032F62;--shiki-dark:#9ECBFF">error</span><span style="color:#005CC5;--shiki-dark:#79B8FF">\"</span><span style="color:#032F62;--shiki-dark:#9ECBFF">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">\"</span><span style="color:#032F62;--shiki-dark:#9ECBFF">access_denied</span><span style="color:#005CC5;--shiki-dark:#79B8FF">\"</span><span style="color:#032F62;--shiki-dark:#9ECBFF">,</span><span style="color:#005CC5;--shiki-dark:#79B8FF">\"</span><span style="color:#032F62;--shiki-dark:#9ECBFF">message</span><span style="color:#005CC5;--shiki-dark:#79B8FF">\"</span><span style="color:#032F62;--shiki-dark:#9ECBFF">:</span><span style="color:#005CC5;--shiki-dark:#79B8FF">\"</span><span style="color:#032F62;--shiki-dark:#9ECBFF">权限不足，拒绝访问</span><span style="color:#005CC5;--shiki-dark:#79B8FF">\"</span><span style="color:#032F62;--shiki-dark:#9ECBFF">}"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>在 <code>SecurityConfig</code> 里挂上。<strong>注意：只配置 <code>accessDeniedHandler</code>，不要顺手配置 <code>authenticationEntryPoint</code></strong>。<code>oauth2Login</code> 内部已注册 <code>LoginUrlAuthenticationEntryPoint</code>，未登录时靠它跳转到 Keycloak；一旦显式指定自己的入口点，登录重定向就失效，表现为访问受保护页面不再跳转登录页，而是直接返回 401。</p>
+<h2 id="十登录token-与-session-的关系">十、登录、Token 与 Session 的关系</h2>
+<h3 id="101-三类-cookie--session">10.1 三类 Cookie / Session</h3>
+<table>
+<thead>
+<tr>
+<th>名称</th>
+<th>保存位置</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Keycloak SSO Cookie</td>
+<td>浏览器 ↔ Keycloak 域名</td>
+<td>证明浏览器在身份中心已有登录会话</td>
+</tr>
+<tr>
+<td>App-A Session Cookie</td>
+<td>浏览器 ↔ App-A 域名</td>
+<td>标识用户在 App-A 的本地会话</td>
+</tr>
+<tr>
+<td>App-B Session Cookie</td>
+<td>浏览器 ↔ App-B 域名</td>
+<td>标识用户在 App-B 的本地会话</td>
+</tr>
+</tbody>
+</table>
+<p>三者独立。App-B 能免密登录，靠的是<strong>浏览器带着 Keycloak 的 SSO Cookie</strong>，不是因为它能读到 App-A 的 Session。</p>
+<p><img src="/blog/spring-boot-sso/spring-boot-sso-03.png" alt="三类独立会话"></p>
+<h3 id="102-为什么-web-应用还要-session">10.2 为什么 Web 应用还要 Session</h3>
+<p>OIDC 只负责「认证这个用户是谁」这一件事，认证结果需要落在应用侧才能支撑后续几百次请求。做法是登录成功后建立本地 Session，之后靠 Cookie 恢复上下文。Keycloak 负责跨应用统一认证体验，业务应用各管各的 Session，职责清晰。</p>
+<h3 id="103-多实例部署">10.3 多实例部署</h3>
+<p>App-A 起三个实例时，本地 Session 在实例之间不共享，用户会在实例之间跳着登录。这时用 <strong>Spring Session + Redis</strong> 把会话集中存储即可。再强调一次：这是<strong>应用会话共享</strong>，不是 SSO 本身。</p>
+<h2 id="十一单点登出">十一、单点登出</h2>
+<h3 id="111-三种登出">11.1 三种「登出」</h3>
+<table>
+<thead>
+<tr>
+<th>动作</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本地登出</td>
+<td>只清理当前应用 Session</td>
+</tr>
+<tr>
+<td>RP-Initiated Logout</td>
+<td>本地登出 + 重定向到 Keycloak <code>end_session_endpoint</code> 结束中心会话</td>
+</tr>
+<tr>
+<td>全局登出</td>
+<td>需 Back-Channel / Front-Channel Logout 通知其他客户端清理各自会话</td>
+</tr>
+</tbody>
+</table>
+<p><code>setPostLogoutRedirectUri</code> 指向的地址必须登记在 Keycloak 客户端的 Valid post logout redirect URIs 里，否则登出后 Keycloak 会拒绝跳回。首页登出按钮必须是 POST 且带 CSRF Token，<strong>不要为了方便把 <code>/logout</code> 改成 GET</strong>。</p>
+<h3 id="112-为什么登出了-app-aapp-b-还活着">11.2 为什么登出了 App-A，App-B 还活着</h3>
+<p>App-A 和 App-B 的本地 Session 是两份东西。结束 Keycloak 中心会话，不会自动销毁 App-B 已建立的本地 Session。常见调和做法：缩短本地 Session 有效期，敏感操作要求重新认证；配置 Back-Channel Logout，让各客户端收到登出通知后主动销毁会话；关键业务每次校验 Token 的 <code>exp</code>，而不是长期信任本地会话。「跳转到 Keycloak 登出页」不等于「所有应用会话都已清除」，多浏览器、多客户端场景下要实测确认。</p>
+<h2 id="十二api-服务接入-jwt-resource-server">十二、API 服务接入 JWT Resource Server</h2>
+<h3 id="121-依赖与配置">12.1 依赖与配置</h3>
+<p>Resource Server 只写 <code>issuer-uri</code> 就够了：Spring Security 自动拉 Discovery 元数据、取 JWKS 公钥，验证签名并校验 <code>iss</code>、<code>exp</code>、<code>nbf</code>。</p>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="xml"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>org.springframework.boot&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">groupId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">>spring-boot-starter-oauth2-resource-server&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">dependency</span><span style="color:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="yaml"><code><span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">spring</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">  security</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">    oauth2</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">      resourceserver</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">        jwt</span><span style="color:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#85E89D">          issuer-uri</span><span style="color:#24292E;--shiki-dark:#E1E4E8">: </span><span style="color:#032F62;--shiki-dark:#9ECBFF">http://localhost:8180/realms/demo</span></span></code></pre>
+<pre class="astro-code astro-code-themes github-light github-dark" style="background-color:#fff;--shiki-dark-bg:#24292e;color:#24292e;--shiki-dark:#e1e4e8; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="java"><code><span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">@</span><span style="color:#D73A49;--shiki-dark:#F97583">Configuration</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">public</span><span style="color:#D73A49;--shiki-dark:#F97583"> class</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> ApiSecurityConfig</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    @</span><span style="color:#D73A49;--shiki-dark:#F97583">Bean</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">    public</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> SecurityFilterChain </span><span style="color:#6F42C1;--shiki-dark:#B392F0">apiFilterChain</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(HttpSecurity </span><span style="color:#E36209;--shiki-dark:#FFAB70">http</span><span style="color:#24292E;--shiki-dark:#E1E4E8">) </span><span style="color:#D73A49;--shiki-dark:#F97583">throws</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> Exception {</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">        http.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">csrf</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(csrf </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> csrf.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">disable</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">authorizeHttpRequests</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(auth </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> auth</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                    .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">requestMatchers</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#032F62;--shiki-dark:#9ECBFF">"/api/public/**"</span><span style="color:#24292E;--shiki-dark:#E1E4E8">).</span><span style="color:#6F42C1;--shiki-dark:#B392F0">permitAll</span><span style="color:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">                    .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">anyRequest</span><span style="color:#24292E;--shiki-dark:#E1E4E8">().</span><span style="color:#6F42C1;--shiki-dark:#B392F0">authenticated</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">oauth2ResourceServer</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(rs </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> rs.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">jwt</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(jwt </span><span style="color:#D73A49;--shiki-dark:#F97583">-></span><span style="color:#24292E;--shiki-dark:#E1E4E8"> jwt.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">jwtAuthenticationConverter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">jwtConverter</span><span style="color:#24292E;--shiki-dark:#E1E4E8">())));</span></span>
+<span class="line"><span style="color:#D73A49;--shiki-dark:#F97583">        return</span><span style="color:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">build</span><span style="color:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>关 CSRF 的前提是：令牌只通过 <code>Authorization: Bearer</code> 传，不依赖浏览器自动带的 Cookie。如果 API 也接受 Cookie 认证，就必须重新评估 CSRF 防护。</p>
+<h3 id="122-角色转换与权限位置">12.2 角色转换与权限位置</h3>
+<p>Resource Server 默认只把 <code>scope</code> / <code>scp</code> 映射成 <code>SCOPE_</code> 前缀权限，<code>hasRole("ADMIN")</code> 需要自己加转换。</p>
+<p>这里有个坑：<strong>权限不在 <code>Jwt</code> 上</strong>。<code>Jwt</code> 只有声明，权限在 <code>JwtAuthenticationToken</code> 上。控制器里应注入 <code>Authentication</code> 再取授权，而不是直接从 <code>Jwt</code> 拿。</p>
+<p><img src="/blog/spring-boot-sso/spring-boot-sso-04.png" alt="Resource Server 验签流程"></p>
+<h3 id="123-千万别把-id-token-当-access-token">12.3 千万别把 ID Token 当 Access Token</h3>
+<p>两个 Token 长得都像 JWT，但用途完全不同：ID Token 给客户端识别用户，<code>aud</code> 是客户端 ID；Access Token 给 API 用，<code>aud</code> 应该是 API。用 ID Token 调 API，轻则 401，重则因缺少 audience 校验被放行（安全问题）。生产环境建议在 Keycloak 侧配 Audience Mapper，在 Resource Server 侧校验 <code>aud</code>。</p>
+<h2 id="十三前后端分离与-bff">十三、前后端分离与 BFF</h2>
+<h3 id="131-spa-用授权码--pkce">13.1 SPA 用授权码 + PKCE</h3>
+<p>Vue / React 这类纯浏览器应用是 <strong>Public Client</strong>，没法安全保存 Client Secret。正确姿势是 Authorization Code Flow + PKCE，配合成熟的 OIDC 前端库。<strong>绝对不要把 Confidential Client 的 Secret 写进 JavaScript 或打包产物</strong>，那是公开的。</p>
+<h3 id="132-bff-模式">13.2 BFF 模式</h3>
+<p>安全要求高的系统可在前端和 API 之间加一层 BFF：浏览器只拿 HttpOnly + Secure + SameSite 的 Cookie，Access Token 存服务端，由后端代理访问 API。代价是要处理好 CSRF、Session 和 XSS。</p>
+<h3 id="133-cors-不是-sso">13.3 CORS 不是 SSO</h3>
+<p>CORS 解决浏览器跨源访问限制，不负责认证，也实现不了单点登录。配了 CORS 也照样必须校验 Token。</p>
+<h2 id="十四总结这套方案的分工">十四、总结：这套方案的分工</h2>
+<ol>
+<li><strong>Keycloak</strong> 负责「你是谁」——统一认证、SSO 会话、用户与角色、签发 Token；</li>
+<li><strong>Spring Security OAuth2 Client</strong> 负责浏览器端「走完协议」——发起授权、处理回调、校验 ID Token、建立本地 Session；</li>
+<li><strong>业务系统</strong> 负责「你能干什么」——把角色映射成自己的权限模型，在接口上做授权校验；</li>
+<li><strong>Resource Server</strong> 负责 API 侧「令牌可信吗」——验签、校验 issuer / 时效 / 权限。</li>
+</ol>
+<blockquote>
+<p>备注：本篇为个人学习整理，内容基于公开学习资料归纳，代码片段为通用示例；涉及真实项目配置时请按实际环境调整并做好脱敏，示例中的账号、地址、密码均为占位符。</p>
+</blockquote> <div class="post-copyright"> <p><strong>本文标题：</strong>Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签</p> <p><strong>本文链接：</strong><a href="https://zhanzhenguan.github.io/blog/spring-boot-sso/">https://zhanzhenguan.github.io/blog/spring-boot-sso/</a></p> <p><strong>作者：</strong>zane · 许可：<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>，转载请注明出处。</p> </div> </article> <aside class="toc" id="toc"> <h4>目录</h4> </aside> </div> <section class="related"> <h2 class="section-title">🔗 相关文章</h2> <ul class="post-list"> <li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-actuator/">Spring Boot 3 整合 Actuator：健康检查、自定义指标/端点、Prometheus 接入与生产端口隔离</a> <p>整理 Spring Boot 3 接入 Actuator 的要点：版本基线与三个官方默认事实（默认只暴露 health、show-details 默认 never、3.5 access 访问级别）、依赖与 micrometer-registry-prometheus、端点暴露清单与健康分组、info 贡献者、全局异常处理器必须限定包范围、自定义 HealthIndicator、Counter/Timer/Gauge 埋点与 Prometheus 名称转换、@Endpoint 读写删操作、HttpExchangeRepository、测试环境 @AutoConfigureObservability、生产端口隔离与最小暴露、敏感端点清单与常见踩坑。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-admin/">Spring Boot 3 整合 Spring Boot Admin：Server/Client 注册、健康联动与日志动态调级</a> <p>整理 Spring Boot 3 接入 Spring Boot Admin 的要点：SBA 与 Actuator 分工、Server+Client 架构与服务发现接入边界、SBA 3.5.x 对应 Boot 3.5（4.x 属 Boot 4）、Maven 聚合工程、starter-server 与 @EnableAdminServer、starter-client 注册配置与端点暴露、异常处理器包范围限定、自定义健康指示器、Wallboard/Details/Log/Env 等界面导览、UP/DOWN 健康联动与 503 状态码、日志级别动态调整 204 响应、踩坑复盘与生产化建议。</p> </li><li> <div class="meta"> <time datetime="2026-11-28T00:00:00.000Z">2026-11-28</time> </div> <a class="title" href="/blog/spring-boot-cors/">Spring Boot 解决跨域问题：@CrossOrigin、WebMvcConfigurer、Security CORS、Filter 与预检/Cookie 全梳理</a> <p>整理前后端跨域的原理与四种后端配置方式：同源策略与协议/域名/端口判定、@CrossOrigin 局部注解、WebMvcConfigurer 全局跨域、Spring Security 6 CorsConfigurationSource + http.cors()、自定义 Filter 响应头、OPTIONS 预检请求触发条件与流程、跨域 Cookie 的前后端配置与 SameSite/Secure、Nginx 统一处理、排查步骤、常见错误表、安全注意事项与按项目场景的方案选型。</p> </li> </ul> </section><nav class="post-nav"> <a href="/blog/spring-boot-shiro/"> <div class="nav-label">← 较新一篇</div> <div class="nav-title">Spring Boot 3 整合 Shiro 2.x：Jakarta 适配、Realm 认证授权与过滤器链</div> </a> <a class="next" href="/blog/spring-boot-swagger/"> <div class="nav-label">较早一篇 →</div> <div class="nav-title">Spring Boot 3 整合 Springdoc OpenAPI 2.10：接口文档、JWT 调试、分组隔离与生产关闭</div> </a> </nav> <section class="comments"><script src="https://giscus.app/client.js" data-repo="zhanzhenguan/zhanzhenguan.github.io" data-repo-id="MDEwOlJlcG9zaXRvcnkyOTAzNzQ3ODU=" data-category="Announcements" data-category-id="DIC_kwDOEU7Egc4DL7G1" data-mapping="pathname" data-strict="0" data-reactions-enabled="1" data-emit-metadata="0" data-input-position="bottom" data-theme="preferred_color_scheme" data-lang="zh-CN" data-loading="lazy" crossorigin="anonymous" async></script></section> <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Spring Boot 整合 SSO 单点登录：Keycloak + OIDC 授权码流程与 Resource Server 验签","description":"整理 Keycloak 作为身份提供方、Spring Security OAuth2 Client 完成浏览器端 OIDC 登录、Resource Server 校验 Access Token 的 SSO 体系：SSO 概念澄清、授权码流程、组件架构、Keycloak 启动与 Realm 客户端配置、角色映射、本地 Session 与登出、API 资源服务器验签，以及 PKCE/BFF 等前后端分离要点。","datePublished":"2026-11-28T00:00:00.000Z","dateModified":"2026-11-28T00:00:00.000Z","url":"https://zhanzhenguan.github.io/blog/spring-boot-sso/","author":{"@type":"Person","name":"zane"}}</script>  </main> <footer class="site-footer"> <span>© 2026 zane · Powered by Astro &amp; GitHub Pages</span> <span><a href="/rss.xml">RSS 订阅</a></span> <span><a href="https://github.com/zhanzhenguan" target="_blank" rel="noopener noreferrer">GitHub</a></span> </footer> <button class="back-top" id="back-top" type="button" aria-label="回到顶部">↑</button> <!-- Pagefind 搜索弹窗 --> <pagefind-modal data-pagefind-ignore="true"></pagefind-modal> <script type="module">(function(){var o=document.getElementById("progress-bar"),n=document.getElementById("back-top");function e(){var t=document.documentElement,r=t.scrollHeight-t.clientHeight,i=r>0?t.scrollTop/r*100:0;o&&(o.style.width=i+"%"),n&&n.classList.toggle("visible",t.scrollTop>400)}window.addEventListener("scroll",e,{passive:!0}),e(),n?.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})})})();(function(){document.querySelectorAll("pre").forEach(function(o){var n=o.dataset.language;if(n){var e=document.createElement("span");e.className="code-lang",e.textContent=n,o.appendChild(e)}var t=document.createElement("button");t.className="code-copy",t.type="button",t.textContent="复制",t.addEventListener("click",function(){var r=o.querySelector("code"),i=r?r.innerText:o.innerText;navigator.clipboard.writeText(i).then(function(){t.textContent="已复制",setTimeout(function(){t.textContent="复制"},1500)})}),o.appendChild(t)})})();(function(){var o=document.querySelector(".post-article"),n=document.getElementById("toc");if(!o||!n)return;var e=o.querySelectorAll("h2, h3");if(e.length===0){n.style.display="none";return}var t=document.createElement("ul");e.forEach(function(a,c){a.id||(a.id="heading-"+c);var l=document.createElement("li");l.className=a.tagName==="H3"?"lvl-3":"";var s=document.createElement("a");s.href="#"+a.id,s.textContent=a.textContent,s.addEventListener("click",function(d){d.preventDefault(),a.scrollIntoView({behavior:"smooth",block:"start"}),history.replaceState(null,"","#"+a.id)}),l.appendChild(s),t.appendChild(l)}),n.appendChild(t);var r=Array.prototype.slice.call(n.querySelectorAll("a"));function i(){var a=window.scrollY+120,c=null;e.forEach(function(l){l.offsetTop<=a&&(c=l.id)}),r.forEach(function(l){l.classList.toggle("active",l.getAttribute("href")==="#"+c)})}window.addEventListener("scroll",i,{passive:!0}),i()})();(function(){var o={NOTE:"📝 提示",TIP:"💡 建议",WARNING:"⚠️ 注意",IMPORTANT:"❗ 重要",CAUTION:"🚫 警告"};document.querySelectorAll(".post-article blockquote").forEach(function(n){var e=n.querySelector("p");if(e){var t=(e.textContent||"").match(/^\s*\[\!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);if(t){var r=t[1].toLowerCase();n.classList.add("callout","callout-"+r),e.textContent=e.textContent.replace(/^\s*\[\![^\]]*\]\s*/,"").trim(),e.textContent||e.remove();var i=document.createElement("div");i.className="callout-title",i.textContent=o[r.toUpperCase()]||o.NOTE,n.insertBefore(i,n.firstChild)}}})})();(function(){var o=document.querySelector(".post-article");o&&o.querySelectorAll("img").forEach(function(n){n.style.cursor="zoom-in",n.addEventListener("click",function(){var e=document.createElement("div");e.className="lightbox";var t=new Image;t.src=n.src,t.alt=n.alt||"",e.appendChild(t);function r(){e.remove()}e.addEventListener("click",r),document.addEventListener("keydown",function i(a){a.key==="Escape"&&(r(),document.removeEventListener("keydown",i))}),document.body.appendChild(e)})})})();(function(){var o=document.getElementById("nav-toggle"),n=document.getElementById("nav-links");o?.addEventListener("click",function(){var e=n.classList.toggle("open");o.setAttribute("aria-expanded",String(e))})})();(function(){var o=document.getElementById("cursor-glow");if(!o||window.matchMedia&&window.matchMedia("(pointer: coarse)").matches)return;var n=260,e=window.innerWidth/2,t=window.innerHeight/2,r=e,i=t,a=null;function c(){e+=(r-e)*.12,t+=(i-t)*.12,o.style.transform="translate("+(e-n/2)+"px,"+(t-n/2)+"px)",a=requestAnimationFrame(c)}window.addEventListener("mousemove",function(l){r=l.clientX,i=l.clientY,o.classList.add("visible"),a||c()}),document.addEventListener("mouseleave",function(){o.classList.remove("visible")})})();</script> </body> </html>
